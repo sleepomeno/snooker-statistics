@@ -1,19 +1,24 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Main where
 
-import Control.Concurrent (threadDelay)
-import Control.Monad (join, liftM, void)
-import Control.Monad.Error (ErrorT, runErrorT)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans (lift)
-import Data.ConfigFile
-import Data.Either.Utils
-import Data.Text (pack, unpack)
-import Paths
-import System.FilePath
-import System.IO.Unsafe(unsafePerformIO)
-import Test.WebDriver
+import           Control.Concurrent (threadDelay)
+import           Control.Monad (join, liftM, void,(>=>))
+import           Control.Monad.Error (ErrorT, runErrorT)
+import           Control.Monad.IO.Class (MonadIO, liftIO)
+import           Control.Monad.Trans (lift)
+import           Data.ConfigFile
+import           Data.Either.Utils
+import           Data.String
+import           Data.Text (pack, unpack)
+import           Paths
+import           System.FilePath
+import           System.IO.Unsafe (unsafePerformIO)
+import           Test.WebDriver
+import qualified Text.XML as X
+import qualified Text.XML.Cursor as C
 
 data Config = Conf { loginUser :: String
                    , loginPwd :: String
@@ -59,6 +64,11 @@ main = let conf = defaultCaps { browser = chrome } in
 
   runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource
 
+parseDoc :: IO X.Document
+parseDoc = X.readFile X.def $ fromString resultsFile
+
+parseHoverTable doc = (C.fromDocument doc) C.$// (element "table") >=> (C.attributeIs "class" "hoverTable")
+
 resultsSource :: WD ()
 resultsSource = do
     liftIO $ threadDelay 3500000
@@ -67,6 +77,9 @@ resultsSource = do
     source <- getSource
     liftIO $ writeFile resultsFile $ unpack source
     return ()
+
+xhtml = "{http://www.w3.org/1999/xhtml}"
+element = C.element . fromString . (++) xhtml 
 
 results :: IO String
 results = readFile resultsFile
