@@ -5,6 +5,7 @@ module Main where
 
 import           Control.Concurrent (threadDelay)
 import           Control.Monad (join, liftM, void, (>=>))
+import           Control.Monad.Identity
 import           Control.Monad.Error (ErrorT, runErrorT)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Trans (lift)
@@ -17,9 +18,11 @@ import           Data.Time
 import           Data.Time.Format
 import           Paths
 import           System.FilePath
-import           System.Locale (defaultTimeLocale)
 import           System.IO.Unsafe (unsafePerformIO)
+import Text.Parsec.Token
+import           System.Locale (defaultTimeLocale)
 import           Test.WebDriver
+import           Text.Parsec
 import qualified Text.XML as X
 import qualified Text.XML.Cursor as C
 
@@ -73,11 +76,25 @@ parseDoc = X.readFile X.def $ fromString resultsFile
 parseHoverTable :: X.Document -> [C.Cursor]
 parseHoverTable doc = C.fromDocument doc C.$// element "table" >=> (C.attributeIs "class" "hoverTable")
 
--- parseResultLines :: C.Cursor -> [ResultLine]
+-- parseResultLines :: C.Cursor -> Int
 parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ element "tr"
                                   extractTDs tr = tr C.$/ element "td"
                                   date = parseDate $ extractTDs (trs!!0)!!1
-                              in undefined 
+                                  duration = parseDuration $ extractTDs (trs!!0)!!2
+                              in  duration 
+
+type Seconds = Int
+parseDuration :: C.Cursor -> Int
+parseDuration td = either (const 0) id . parse parseDuration' "parseDuration" . concatMap show $ td C.$/ C.content
+                  
+                         
+parseDuration' :: ParsecT String () Identity Int 
+parseDuration' = do
+  string "\""
+  minutes <- many1 digit
+  char ':'
+  seconds <- many1 digit
+  return $ 60 * read minutes + read seconds
 
 parseDate :: C.Cursor -> UTCTime
 parseDate td = readTime defaultTimeLocale formatString dateString
