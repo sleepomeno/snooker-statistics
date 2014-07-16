@@ -3,22 +3,25 @@
 
 module Main where
 
-import           Control.Concurrent     (threadDelay)
-import           Control.Monad          (join, liftM, void, (>=>))
-import           Control.Monad.Error    (ErrorT, runErrorT)
+import           Control.Concurrent (threadDelay)
+import           Control.Monad (join, liftM, void, (>=>))
+import           Control.Monad.Error (ErrorT, runErrorT)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Control.Monad.Trans    (lift)
+import           Control.Monad.Trans (lift)
 import           Data.ConfigFile
 import           Data.Either.Utils
 import           Data.String
-import           Data.Text              (pack, unpack)
-import           Data.Text.Internal              (showText)
+import           Data.Text (pack, unpack)
+import           Data.Text.Internal (showText)
+import           Data.Time
+import           Data.Time.Format
 import           Paths
 import           System.FilePath
-import           System.IO.Unsafe       (unsafePerformIO)
+import           System.Locale (defaultTimeLocale)
+import           System.IO.Unsafe (unsafePerformIO)
 import           Test.WebDriver
-import qualified Text.XML               as X
-import qualified Text.XML.Cursor        as C
+import qualified Text.XML as X
+import qualified Text.XML.Cursor as C
 
 data Config = Conf { loginUser :: String
                    , loginPwd  :: String
@@ -72,11 +75,24 @@ parseHoverTable doc = C.fromDocument doc C.$// element "table" >=> (C.attributeI
 
 -- parseResultLines :: C.Cursor -> [ResultLine]
 parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ element "tr"
-                                  extractTDs tr = tr C.$/ element "td" C.&/ C.content
-                              -- in mapM_ putStrLn $ map show $ extractTDs (trs!!0)
-                              in map show $ extractTDs (trs!!0)
+                                  extractTDs tr = tr C.$/ element "td"
+                                  date = parseDate $ extractTDs (trs!!0)!!1
+                              in undefined 
 
-data ResultLine = ResultLine {date        :: String
+parseDate :: C.Cursor -> UTCTime
+parseDate td = readTime defaultTimeLocale formatString dateString
+  where
+  dateString = concatMap show $ td C.$/ element "span" C.&/ C.content
+  formatString = "\"%d.%m.%Y %H:%M:%S\"" 
+
+
+hoverTable' = parseDoc >>= return . parseHoverTable 
+
+resultLines = hoverTable' >>= return . map parseResultLines
+
+
+
+data ResultLine = ResultLine {date        :: UTCTime
                             , duration    :: String
                             , player1     :: String
                             , player2     :: String
@@ -94,7 +110,7 @@ data ResultLine = ResultLine {date        :: String
 resultsSource :: WD ()
 resultsSource = do
     liftIO $ threadDelay 3500000
-    openPage "http://www.gamedesire.com/#/?dd=1&n=0&mod_name=player_results&sub=1&view=edit&gg=103"
+
     liftIO $ threadDelay 6500000
     source <- getSource
     liftIO $ writeFile resultsFile $ unpack source
