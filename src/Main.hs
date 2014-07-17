@@ -166,16 +166,16 @@ unwrapString = reverse . drop 1 . reverse . drop 1
 
 
 data ResultLine = ResultLine {date        :: UTCTime
-                            , duration    :: String
+                            , duration    :: Seconds
                             , player1     :: String
                             , player2     :: String
                             , winner      :: String
-                            , ranking1    :: Float
-                            , ranking2    :: Float
-                            , difference1 :: Float
-                            , difference2 :: Float
-                            , ranked      :: Bool
-                            , endType     :: String
+                            , ranking1    :: Double
+                            , ranking2    :: Double
+                            , difference1 :: Double
+                            , difference2 :: Double
+                            , ranked      :: BS
+                            , endType     :: EndType
                             , maxBreak1   :: Int
                             , maxBreak2   :: Int
                            }
