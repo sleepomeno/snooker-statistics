@@ -82,15 +82,18 @@ parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ ele
                                   date = parseDate $ extractTDs (trs!!0)!!1
                                   duration = parseDuration $ extractTDs (trs!!0)!!2
                                   players = parsePlayers $ extractTDs (trs!!0)!!3
-                              in  players
+                                  winner = parseWinner $ extractTDs (trs!!0)!!4
+                              in  winner
 
+parseWinner :: C.Cursor -> [String]
+parseWinner td = map (unwrapString . show) $ td C.$/ element "b" C.&/ C.content
 
 parsePlayers :: C.Cursor -> (String, String)
 parsePlayers td = (player1, player2)
                    where
                     -- playersStr :: C.Cursor  -> [C.Cursor]
                     playersStr td = td C.$// element "tr" C.&/ element "td" C.&/ element "a" C.&/ C.content
-                    [player1, player2] = map (reverse . drop 1 . reverse . drop 1 . show) $ playersStr td
+                    [player1, player2] = map (unwrapString . show) $ playersStr td
 
 type Seconds = Int
 parseDuration :: C.Cursor -> Int
@@ -114,6 +117,9 @@ parseDate td = readTime defaultTimeLocale formatString dateString
 hoverTable' = parseDoc >>= return . parseHoverTable
 
 resultLines = hoverTable' >>= return . map parseResultLines
+
+unwrapString :: String -> String
+unwrapString  = reverse . drop 1 . reverse . drop 1 
 
 
 
