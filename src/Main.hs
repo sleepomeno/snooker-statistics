@@ -85,8 +85,12 @@ parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ ele
                                   winner = parseWinner $ extractTDs (trs!!0)!!4
                                   (ranking1, ranking2) = parseRankings $ extractTDs (trs!!0)!!5
                                   (difference1, difference2) = parseDifference $ extractTDs (trs!!0)!!5
-                              in  undefined
+                                  bs = parseBS $ extractTDs (trs!!0)!!6
+                              in  bs
 
+data BS = JA | NEIN deriving (Show, Read)
+parseBS :: C.Cursor -> [BS]
+parseBS td = map (read . unwrapText) $ td C.$/ C.content
 
 parseDifference :: C.Cursor -> (Double, Double)
 parseDifference td = (r1, r2)
