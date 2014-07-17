@@ -83,26 +83,40 @@ parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ ele
                                   duration = parseDuration $ extractTDs (trs!!0)!!2
                                   players = parsePlayers $ extractTDs (trs!!0)!!3
                                   winner = parseWinner $ extractTDs (trs!!0)!!4
-                                  rankings = parseRankings $ extractTDs (trs!!0)!!5
-                              in  rankings
+                                  (ranking1, ranking2) = parseRankings $ extractTDs (trs!!0)!!5
+                                  (difference1, difference2) = parseDifference $ extractTDs (trs!!0)!!5
+                              in  undefined
 
+
+parseDifference :: C.Cursor -> (Double, Double)
+parseDifference td = (r1, r2)
+                     where
+                     tdContents = map show $ td C.$// element "td" C.&/ C.content
+                     r2Str = unwrapString . unwrapString $ tdContents!!2
+                     r1Str = unwrapString . unwrapString $ head tdContents
+                     r1 = toRankingDouble r1Str
+                     r2 = toRankingDouble r2Str
+                     toRankingDouble str = (read . map commaToPoint $ drop 1 str) * (signedMultiplier (head str))
+                     signedMultiplier plusMinus = if plusMinus == '+' then 1 else -1
+                     commaToPoint ',' = '.'
+                     commaToPoint c = c
 
 parseRankings :: C.Cursor -> (Double, Double)
 parseRankings td =  (ranking1, ranking2)
                    where
-                     ranking1 = read . head . map unwrapString $ td C.$// element "font" C.&/ C.content
-                     ranking2 = read . unwrapString $ (!!1) $ td C.$// element "td" C.&/ C.content
+                     ranking1 = read . head . map unwrapText $ td C.$// element "font" C.&/ C.content
+                     ranking2 = read . unwrapText $ (!!1) $ td C.$// element "td" C.&/ C.content
                      
                                   
 parseWinner :: C.Cursor -> [String]
-parseWinner td = map unwrapString $ td C.$/ element "b" C.&/ C.content
+parseWinner td = map unwrapText $ td C.$/ element "b" C.&/ C.content
 
 parsePlayers :: C.Cursor -> (String, String)
 parsePlayers td = (player1, player2)
                    where
                     -- playersStr :: C.Cursor  -> [C.Cursor]
                     playersStr td = td C.$// element "tr" C.&/ element "td" C.&/ element "a" C.&/ C.content
-                    [player1, player2] = map unwrapString $ playersStr td
+                    [player1, player2] = map unwrapText $ playersStr td
 
 type Seconds = Int
 parseDuration :: C.Cursor -> Int
@@ -128,7 +142,9 @@ hoverTable' = parseDoc >>= return . parseHoverTable
 resultLines = hoverTable' >>= return . map parseResultLines
 
 -- unwrapString :: String -> String
-unwrapString  = reverse . drop 1 . reverse . drop 1 . show
+unwrapText  = unwrapString . show
+
+unwrapString = reverse . drop 1 . reverse . drop 1
 
 
 
