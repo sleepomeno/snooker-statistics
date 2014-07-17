@@ -3,28 +3,28 @@
 
 module Main where
 
-import           Control.Concurrent (threadDelay)
-import           Control.Monad (join, liftM, void, (>=>))
+import           Control.Concurrent     (threadDelay)
+import           Control.Monad          (join, liftM, void, (>=>))
+import           Control.Monad.Error    (ErrorT, runErrorT)
 import           Control.Monad.Identity
-import           Control.Monad.Error (ErrorT, runErrorT)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Control.Monad.Trans (lift)
+import           Control.Monad.Trans    (lift)
 import           Data.ConfigFile
 import           Data.Either.Utils
 import           Data.String
-import           Data.Text (pack, unpack)
-import           Data.Text.Internal (showText)
+import           Data.Text              (pack, unpack)
+import           Data.Text.Internal     (showText)
 import           Data.Time
 import           Data.Time.Format
 import           Paths
 import           System.FilePath
-import           System.IO.Unsafe (unsafePerformIO)
-import Text.Parsec.Token
-import           System.Locale (defaultTimeLocale)
+import           System.IO.Unsafe       (unsafePerformIO)
+import           System.Locale          (defaultTimeLocale)
 import           Test.WebDriver
 import           Text.Parsec
-import qualified Text.XML as X
-import qualified Text.XML.Cursor as C
+import           Text.Parsec.Token
+import qualified Text.XML               as X
+import qualified Text.XML.Cursor        as C
 
 data Config = Conf { loginUser :: String
                    , loginPwd  :: String
@@ -81,29 +81,37 @@ parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ ele
                                   extractTDs tr = tr C.$/ element "td"
                                   date = parseDate $ extractTDs (trs!!0)!!1
                                   duration = parseDuration $ extractTDs (trs!!0)!!2
-                              in  duration 
+                                  players = parsePlayers $ extractTDs (trs!!0)!!3
+                              in  players
+
+
+parsePlayers :: C.Cursor -> (String, String)
+parsePlayers td = (player1, player2)
+                   where
+                    -- playersStr :: C.Cursor  -> [C.Cursor]
+                    playersStr td = td C.$// element "tr" C.&/ element "td" C.&/ element "a" C.&/ C.content
+                    [player1, player2] = map (reverse . drop 1 . reverse . drop 1 . show) $ playersStr td
 
 type Seconds = Int
 parseDuration :: C.Cursor -> Int
 parseDuration td = either (const 0) id . parse parseDuration' "parseDuration" . concatMap show $ td C.$/ C.content
-                  
-                         
-parseDuration' :: ParsecT String () Identity Int 
-parseDuration' = do
-  string "\""
-  minutes <- many1 digit
-  char ':'
-  seconds <- many1 digit
-  return $ 60 * read minutes + read seconds
+                   where
+                    parseDuration' :: ParsecT String () Identity Int
+                    parseDuration' = do
+                      string "\""
+                      minutes <- many1 digit
+                      char ':'
+                      seconds <- many1 digit
+                      return $ 60 * read minutes + read seconds
 
 parseDate :: C.Cursor -> UTCTime
 parseDate td = readTime defaultTimeLocale formatString dateString
   where
   dateString = concatMap show $ td C.$/ element "span" C.&/ C.content
-  formatString = "\"%d.%m.%Y %H:%M:%S\"" 
+  formatString = "\"%d.%m.%Y %H:%M:%S\""
 
 
-hoverTable' = parseDoc >>= return . parseHoverTable 
+hoverTable' = parseDoc >>= return . parseHoverTable
 
 resultLines = hoverTable' >>= return . map parseResultLines
 
