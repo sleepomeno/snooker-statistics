@@ -87,7 +87,15 @@ parseResultLines hoverTable = let trs = hoverTable C.$/ element "tbody" C.&/ ele
                                   (difference1, difference2) = parseDifference $ extractTDs (trs!!0)!!5
                                   bs = parseBS $ extractTDs (trs!!0)!!6
                                   endType = parseEndType $ extractTDs (trs!!0)!!7
-                              in  endType
+                                  maxBreaks = parseMaxBreaks $ extractTDs (trs!!0)!!8
+                              in  maxBreaks
+
+parseMaxBreaks :: C.Cursor -> (Int, Int)
+parseMaxBreaks td = (read maxBreak1Str, read maxBreak2Str)
+                    where
+                      maxBreak1Str = getBreak "font"
+                      maxBreak2Str = getBreak "td"
+                      getBreak elem = head . map unwrapText $ td C.$// element elem C.&/ C.content
 
 data EndType = TimeOut | Ende | Resign deriving (Show, Read)
 parseEndType :: C.Cursor -> EndType
