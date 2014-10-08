@@ -10,16 +10,17 @@ import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Trans (lift)
 import           Data.ConfigFile
 import           Data.Either.Utils
-import           Data.Text (pack, unpack)
-import qualified Text.XML as X
-import           Data.Text.Internal (showText)
-import           Data.Time
 import           Data.String
+import           Data.Text (pack, unpack)
+import           Data.Text.Internal (showText)
+import           Data.Text.Lazy hiding (pack, unpack,take)
+import           Data.Time
 import           Data.Time.Format
 import           Paths
 import           System.FilePath
 import           System.IO.Unsafe (unsafePerformIO)
 import           Test.WebDriver
+import qualified Text.XML as X
 
 import           Parse
 import           Common
@@ -66,16 +67,19 @@ main = let conf = defaultCaps { browser = chrome } in
   void $ do
   Conf user pwd <- readConfig
 
-  runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource
+  -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
+  aFewResults <- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= parseResultsSource >>= return . take 5
+  mapM_ print aFewResults
 
-resultsSource :: WD ()
+parseResultsSource = return . getResultLines . X.parseText_ X.def . fromStrict 
+
 resultsSource = do
     liftIO $ threadDelay 3500000
-
+    openPage "http://www.gamedesire.com/#/?dd=1&n=0&mod_name=player_results&sub=1&view=edit&gg=103"
     liftIO $ threadDelay 6500000
-    source <- getSource
-    liftIO $ writeFile resultsFile $ unpack source
-    return ()
+    getSource
+
+writeToFile source = liftIO $ writeFile resultsFile $ unpack source
 
 parseDoc :: IO X.Document
 parseDoc = X.readFile X.def $ fromString resultsFile

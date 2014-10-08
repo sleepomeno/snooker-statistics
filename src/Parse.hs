@@ -4,18 +4,18 @@
 
 module Parse (getResultLines)  where
 
-import Common
-import Data.Time
-import           Text.Parsec
+import           Common
+import           Control.Monad (join, liftM, void, (>=>))
 import           Control.Monad.Identity
+import           Data.String
+import           Data.Text.Internal
+import           Data.Time
 import           Data.Time.Format
+import           System.Locale (defaultTimeLocale)
+import           Text.Parsec
 import           Text.Parsec.Token
 import qualified Text.XML as X
-import           System.Locale (defaultTimeLocale)
-import           Data.String
 import qualified Text.XML.Cursor as C
-import           Control.Monad (join, liftM, void, (>=>))
-
 
 getResultLines :: X.Document -> [ResultLine]
 getResultLines = concatMap parseResultLines . parseHoverTable 
@@ -79,9 +79,9 @@ parseWinner td = head . map unwrapText $ td C.$/ element "b" C.&/ C.content
 parsePlayers :: C.Cursor -> (String, String)
 parsePlayers td = (player1, player2)
                    where
-                    -- playersStr :: C.Cursor  -> [C.Cursor]
                     playersStr td = td C.$// element "tr" C.&/ element "td" C.&/ element "a" C.&/ C.content
                     [player1, player2] = map unwrapText $ playersStr td
+
 
 parseDuration :: C.Cursor -> Int
 parseDuration td = either (const 0) id . parse parseDuration' "parseDuration" . concatMap show $ td C.$/ C.content
@@ -100,9 +100,7 @@ parseDate td = readTime defaultTimeLocale formatString dateString
   dateString = concatMap show $ td C.$/ element "span" C.&/ C.content
   formatString = "\"%d.%m.%Y %H:%M:%S\""
 
-
-
--- unwrapString :: String -> String
+unwrapText :: Text -> String
 unwrapText  = unwrapString . show
 
 unwrapString = reverse . drop 1 . reverse . drop 1
