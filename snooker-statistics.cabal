@@ -22,7 +22,7 @@ executable snooker-statistics
   main-is:             Main.hs
   -- other-modules:       
   -- other-extensions:    
-  build-depends: old-locale >= 1.0.0.6, time >= 1.4.2, parsec, filepath >= 1.3.0.2, MissingH >= 1.2.1.0, base >=4.7 && <4.8, tagsoup >= 0.13, webdriver == 0.5.5, transformers, text, mtl, ConfigFile >= 1.1, xml-conduit, parallel
+  build-depends: old-locale >= 1.0.0.6, time >= 1.4.2, parsec, filepath >= 1.3.0.2, MissingH >= 1.2.1.0, base >=4.7 && <4.8, tagsoup >= 0.13, webdriver == 0.5.5, transformers, text, mtl, ConfigFile >= 1.1, xml-conduit, parallel, deepseq, pretty-show
 
   -- hs-source-dirs:      
   default-language:    Haskell2010
@@ -35,7 +35,7 @@ Test-suite test-snooker
     Main-Is:              Spec.hs
     Type:                 exitcode-stdio-1.0
 
-    Build-Depends: old-locale >= 1.0.0.6, time >= 1.4.2, parsec, filepath >= 1.3.0.2, MissingH >= 1.2.1.0, base >=4.7 && <4.8, tagsoup >= 0.13, webdriver == 0.5.5, transformers, text, mtl, ConfigFile >= 1.1, xml-conduit, parallel
+    Build-Depends: old-locale >= 1.0.0.6, time >= 1.4.2, parsec, filepath >= 1.3.0.2, MissingH >= 1.2.1.0, base >=4.7 && <4.8, tagsoup >= 0.13, webdriver == 0.5.5, transformers, text, mtl, ConfigFile >= 1.1, xml-conduit, parallel, deepseq, pretty-show
     Ghc-Options:          -Wall
 
     Build-Depends:        hspec >= 1.10.0.1, QuickCheck >= 2.7.6

@@ -1,5 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
 
 module Main where
 
@@ -11,9 +11,9 @@ import           Control.Monad.Trans (lift)
 import           Data.ConfigFile
 import           Data.Either.Utils
 import           Data.String
-import           Data.Text (pack, unpack)
-import           Data.Text.Internal (showText)
-import           Data.Text.Lazy hiding (pack, unpack,take)
+import qualified Data.Text as T
+-- import           Data.Text.Internal (showText)
+import qualified Data.Text.Lazy as TL
 import           Data.Time
 import           Data.Time.Format
 import           Paths
@@ -21,16 +21,20 @@ import           System.FilePath
 import           System.IO.Unsafe (unsafePerformIO)
 import           Test.WebDriver
 import qualified Text.XML as X
+import           Data.Functor
+import           Test.WebDriver.Classes (getSession)
+import           Data.IORef
+import           Text.XML.Cursor hiding (element)
 
-import           Parse
+import           Text.Show.Pretty (ppShow)
 import           Common
-
-data Config = Conf { loginUser :: String
-                   , loginPwd  :: String
-                   }
-
-gSession :: WD WDSession
-gSession = createSession $ defaultCaps { browser = chrome }
+import           Parse
+--------------------------------
+-------- Configuration ---------
+--------------------------------
+data Config = Conf { loginUser :: T.Text
+                   , loginPwd  :: T.Text
+                   } deriving (Show, Read)
 
 readConfig :: IO Config
 readConfig = do
@@ -40,27 +44,32 @@ readConfig = do
 
   eitherConfig <- runErrorT $ do
     parser <- join $ liftIO $ readfile emptyCP configFile
-    user <- readProp parser "loginuser"
-    pwd <- readProp parser "loginpwd"
+    user <- T.pack <$> readProp parser "loginuser"
+    pwd <- T.pack <$> readProp parser "loginpwd"
     return (user, pwd)
 
   let (user, pwd) = forceEither eitherConfig
   return $ Conf user pwd
 
-loginGamedesire :: String -> String -> WD ()
+-------------------------------------------------------------
+------------- Login with username and password --------------
+-------------------------------------------------------------
+
+loginGamedesire :: T.Text -> T.Text -> WD ()
 loginGamedesire user pwd = do
     openPage "http://www.gamedesire.com"
     setImplicitWait 3000
-    loginBtn  <- findElem $ ByClass (pack "login_button")
+    loginBtn  <- findElemByClass "login_button"
     click loginBtn
     liftIO $ threadDelay 3500
-    findElem $ ById (pack "overlay_login_box")
-    name      <- findElem $ ById (pack "userLogin")
-    password  <- findElem $ ById (pack "user_passwd")
-    loginForm <- findElem $ ById (pack "loginForm")
-    sendKeys (pack user) name
-    sendKeys (pack pwd) password
+    findElem $ ById "overlay_login_box"
+    name      <- findElemById"userLogin"
+    password  <- findElemById "user_passwd"
+    loginForm <- findElemById "loginForm"
+    sendKeys user name
+    sendKeys pwd password
     submit loginForm
+
 
 main :: IO ()
 main = let conf = defaultCaps { browser = chrome } in
@@ -68,25 +77,85 @@ main = let conf = defaultCaps { browser = chrome } in
   Conf user pwd <- readConfig
 
   -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
-  aFewResults <- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= parseResultsSource >>= return . take 5
+  aFewResults <- runSession defaultSession conf $
+                 loginGamedesire user pwd >> waitFor 3500000 >> resultsSource >>= getDocument -- login and get a readable XML document
+                 >>= return . getResultLines -- do the parsing of the source and create according data structures
+                 >>= return . take 5
   mapM_ print aFewResults
 
-parseResultsSource = return . getResultLines . X.parseText_ X.def . fromStrict 
+-- |Transform the text argument into a XML-Conduit readable document
+getDocument :: T.Text -> WD X.Document
+getDocument = return . X.parseText_ X.def . TL.fromStrict 
 
+-- |Return HTML source of results page
 resultsSource = do
-    liftIO $ threadDelay 3500000
-    openPage "http://www.gamedesire.com/#/?dd=1&n=0&mod_name=player_results&sub=1&view=edit&gg=103"
-    liftIO $ threadDelay 6500000
+    openPage resultsURL
+    waitFor 6500000
     getSource
 
-writeToFile source = liftIO $ writeFile resultsFile $ unpack source
+resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&player=Momsen76&view=player_results&gg=103"
 
+---------------------------------------------------
+----------- Some webdriver helper methods ---------
+---------------------------------------------------
+
+findElemById :: T.Text -> WD Element
+findElemById = findElem . ById
+findElemByClass = findElem . ByClass
+
+waitFor :: Int -> WD ()
+waitFor = liftIO . threadDelay
+
+---------------------------------------------------
+------------- Global Session handling -------------
+---------------------------------------------------
+
+-- Top-Level mutable state like in https://www.haskell.org/haskellwiki/Top_level_mutable_state
+-- You need a very good reason to do that
+globalSession :: IORef WDSession
+{-# NOINLINE globalSession #-}
+globalSession = unsafePerformIO (newIORef defaultSession)
+
+-- |Creates a new browser session and puts it into the global variable globalSession
+--  This is intended for interactive use only.
+initGlobalSession = runWD defaultSession $
+                      newSession >>=
+                    \x -> liftIO $ writeIORef globalSession x
+    where
+      newSession :: WD WDSession
+      newSession = createSession $ defaultCaps { browser = chrome }
+
+
+-- |For use in interactive development to run the webdriver action with the global session
+runGlobal action = readIORef globalSession >>= \session -> runWD session action
+
+
+-----------------------
+------ CheatSheet for interactive use -----
+-----------------------
 parseDoc :: IO X.Document
 parseDoc = X.readFile X.def $ fromString resultsFile
-
-resultLines = parseDoc >>= return . getResultLines
-
-results :: IO String
-results = readFile resultsFile
-
 resultsFile =  "/home/greg/haskell/snooker-statistics/results"
+writeToFile source = liftIO $ writeFile resultsFile $ T.unpack source
+
+withDoc f = do
+  doc <- fromDocument  <$> parseDoc
+  f doc
+
+withDocR f = withDoc (return . f)
+
+saveDoc :: WD ()
+saveDoc = do
+  source <- getSource
+  writeToFile source
+
+login = loginGamedesire (T.pack "testaccount12345") (T.pack "gregor") >> waitFor 5000000
+
+toResults = openPage resultsURL >> waitFor 5500000
+
+
+initResults = initGlobalSession >> (runGlobal $ login >> toResults >> saveDoc)
+
+--- :set -XOverloadedStrings
+--- initResults
+--- withDocR $ length . \x -> x $// element "table"

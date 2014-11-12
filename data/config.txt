@@ -1,2 +1,2 @@
-loginuser = 
-loginpwd = 
+loginuser = testaccount12345
+loginpwd = gregor
