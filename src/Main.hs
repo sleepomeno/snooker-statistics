@@ -10,6 +10,7 @@ import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Trans    (lift)
 import           Control.Monad.Trans.Maybe
 import Control.Error
+import Data.Monoid ((<>))
 import           Control.Monad.Cont
 import           Data.ConfigFile as C
 import           Data.Either.Utils
@@ -37,6 +38,9 @@ import           Text.Show.Pretty       (ppShow)
 
 import Database.Persist
 import Database.Persist.Sqlite
+import Control.Monad.Trans.Resource (runResourceT)
+import Control.Monad.Logger (runStdoutLoggingT, logDebugN, logInfoN, logWarnN, logErrorN)
+
 
 --------------------------------
 -------- Configuration ---------
@@ -85,56 +89,69 @@ type URL = String
 -- l = lift . lift . lift
 
 
-withDB x = runSqlite ":memory:" $ do 
+           
+-- withDB x = runSqlite "snook.db" $ do 
+--     runMigration migrateAll
+--     x
+-- withDB x = runStdoutLoggingT $ withSqlitePool ":memory:" 1  $ \pool -> runResourceT $ flip runSqlPool pool $ do 
+withDB x = runSqlite' "snook.db" $ do
     runMigration migrateAll
     x
+
+runSqlite' connstr  = runResourceT . runStdoutLoggingT . withSqliteConn connstr . runSqlConn
+
+run session = runWD session
     
 main :: IO ()
-main = do
+main = withDB $ do
   let conf = defaultCaps { browser = chrome } 
-  Conf user pwd players <- readConfig
+  Conf user pwd players <- liftIO readConfig
 
   let playerURLs = take 3 $ matchURLs $ head players
       stop = const False
 
+  sess <- liftIO $ runWD defaultSession $ createSession conf
+  let run' = runWD sess
+
   -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
-  let init = do
+  let init = liftIO $ run' $ do
         loginGamedesire user pwd
         waitFor 3500000
-      fetchResults url = do 
+      fetchResults url = liftIO $ run' $ do 
         source <- resultsSource url
         doc <- getDocument source  
         return . getResultLines $ doc 
 
-  runSession defaultSession conf $ do 
-    init
-    forM_ players $ \player -> do 
-        maybeLastMatch <- withDB $ getBy $ UniquePlayer player
-        results <- (`runContT` return) $ callCC $ \ret -> do
-            let getResults matches url = do 
-                    results <- lift $ fetchResults (T.unpack url)
-                    let tooOld = fromMaybe False tooOld'
+
+  -- runSession defaultSession conf $ do 
+  init
+  forM_ players $ \player -> do 
+      maybeLastMatch <- getBy $ UniquePlayer player
+      results <- (`runContT` return) $ callCC $ \ret -> do
+          let getResults matches url = do 
+                  results <- fetchResults (T.unpack url)
+                  let tooOld = fromMaybe False tooOld'
                           where
-                            tooOld' :: Maybe Bool
-                            tooOld' = do
-                                (Entity _ (LastMatch _ date')) <- maybeLastMatch
-                                match <- headMay results
-                                let matchDate' = matchDate match 
-                                return $ matchDate' > date'
-                          
-                    when (null results) $ do
-                      log $ "Results null for " `T.append` url
+                          tooOld' :: Maybe Bool
+                          tooOld' = do
+                              (Entity _ (LastMatch _ date')) <- maybeLastMatch
+                              match <- headMay results
+                              let matchDate' = matchDate match 
+                              return $ matchDate' > date'
+
+                  when (null results) $ do
+                      log $ "Results null for " <> url
                       ret matches
 
-                    when tooOld $ do
-                      log $ "Too old for " `T.append` url
+                  when tooOld $ do
+                      log $ "Too old for " <> url
 
                       ret matches
-                    return (matches ++ results)
+                  return (matches ++ results)
 
-            foldM getResults [] playerURLs
-        liftIO $ mapM_ print (take 5 results)
-        liftIO $ putStrLn $ "Found " ++ (show $ length results) ++ " Matches for " ++ (T.unpack player)  
+          foldM getResults [] playerURLs
+      liftIO $ mapM_ print (take 25 results)
+      liftIO $ putStrLn $ "Found " ++ (show $ length results) ++ " Matches for " ++ (T.unpack player)  
 
 log t = liftIO $ putStrLn $ T.unpack $ t
 

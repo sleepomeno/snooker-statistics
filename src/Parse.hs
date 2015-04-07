@@ -8,6 +8,8 @@ import           Common
 import           Control.Monad (join, liftM, void, (>=>))
 import           Control.Monad.Identity
 import           Data.String
+import           Data.Either.Combinators
+import Control.Applicative ((<*),(*>))
 import           Data.Text.Internal
 import           Data.Time
 import           Data.Time.Format
@@ -20,6 +22,8 @@ import qualified Text.XML.Cursor as C
 import  Text.XML.Cursor  hiding (element)
 
 import Model
+
+import Debug.Trace
 
 
 -- |Returns all the games displayed 
@@ -72,14 +76,24 @@ parseDifference :: Cursor -> (Double, Double)
 parseDifference td = (r1, r2)
                      where
                      tdContents = map show $ td $// element "td" &/ content
-                     r2Str = unwrapString . unwrapString $ tdContents!!2
-                     r1Str = unwrapString . unwrapString $ head tdContents
+                     r2Str = tdContents!!2
+                     r1Str = head tdContents
                      r1 = toRankingDouble r1Str
                      r2 = toRankingDouble r2Str
-                     toRankingDouble str = (read . map commaToPoint $ drop 1 str) * signedMultiplier (head str)
-                     signedMultiplier plusMinus = if plusMinus == '+' then 1 else -1
-                     commaToPoint ',' = '.'
-                     commaToPoint c = c
+                     toRankingDouble str = let result = parse parseRankingDouble "parseRankingDouble" str
+                                               in
+                                            (either (const (error "could not parse difference")) id result) -- TODO need error handling
+                     parseRankingDouble :: ParsecT String () Identity Double
+                     parseRankingDouble = do
+                       anyChar >> anyChar
+                       multiplier <- option 1 $ (char '+' *> return 1) <|> (char '-' *> return (-1))
+                       n1 <- many digit
+                       n2 <- option "0" $ do
+                         char ','
+                         many digit
+                       anyChar >> anyChar
+                       return $ multiplier * (read (n1 ++ "." ++ n2) :: Double)
+                       
 
 parseRankings :: Cursor -> (Double, Double)
 parseRankings td =  (ranking1, ranking2)
