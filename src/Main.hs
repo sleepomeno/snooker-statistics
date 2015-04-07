@@ -1,55 +1,66 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
 module Main where
 
-import           Control.Concurrent (threadDelay)
-import           Control.Monad (join, liftM, void, (>=>))
-import           Control.Monad.Error (ErrorT, runErrorT)
+import Prelude hiding (log)
+import           Control.Concurrent     (threadDelay)
+import           Control.Monad          (join, liftM, void, (>=>))
+import           Control.Monad.Error    (ErrorT, runErrorT)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Control.Monad.Trans (lift)
-import           Data.ConfigFile
+import           Control.Monad.Trans    (lift)
+import           Control.Monad.Trans.Maybe
+import Control.Error
+import           Control.Monad.Cont
+import           Data.ConfigFile as C
 import           Data.Either.Utils
 import           Data.String
-import qualified Data.Text as T
+import Data.Maybe
+import qualified Data.Text              as T
 -- import           Data.Text.Internal (showText)
-import qualified Data.Text.Lazy as TL
+import           Data.Functor
+import           Data.IORef
+import qualified Data.Text.Lazy         as TL
 import           Data.Time
 import           Data.Time.Format
 import           Paths
 import           System.FilePath
-import           System.IO.Unsafe (unsafePerformIO)
+import           System.IO.Unsafe       (unsafePerformIO)
 import           Test.WebDriver
-import qualified Text.XML as X
-import           Data.Functor
 import           Test.WebDriver.Classes (getSession)
-import           Data.IORef
-import           Text.XML.Cursor hiding (element)
+import qualified Text.XML               as X
+import           Text.XML.Cursor        hiding (element)
 
-import           Text.Show.Pretty (ppShow)
 import           Common
+import           Model
 import           Parse
+import           Text.Show.Pretty       (ppShow)
+
+import Database.Persist
+import Database.Persist.Sqlite
+
 --------------------------------
 -------- Configuration ---------
 --------------------------------
 data Config = Conf { loginUser :: T.Text
                    , loginPwd  :: T.Text
+                   , players   :: [T.Text]
                    } deriving (Show, Read)
 
 readConfig :: IO Config
 readConfig = do
   dataDir <- getStaticDir
   let configFile = dataDir </> "config.txt"
-      readProp p  = get p "DEFAULT"
+      readProp p  = C.get p "DEFAULT"
 
   eitherConfig <- runErrorT $ do
     parser <- join $ liftIO $ readfile emptyCP configFile
     user <- T.pack <$> readProp parser "loginuser"
     pwd <- T.pack <$> readProp parser "loginpwd"
-    return (user, pwd)
+    players <- (T.split (== ',') . T.pack) <$> readProp parser "users"
+    return (user, pwd, players)
 
-  let (user, pwd) = forceEither eitherConfig
-  return $ Conf user pwd
+  let (user, pwd, players) = forceEither eitherConfig
+  return $ Conf user pwd players
 
 -------------------------------------------------------------
 ------------- Login with username and password --------------
@@ -69,31 +80,82 @@ loginGamedesire user pwd = do
     sendKeys user name
     sendKeys pwd password
     submit loginForm
+type URL = String
+
+-- l = lift . lift . lift
 
 
+withDB x = runSqlite ":memory:" $ do 
+    runMigration migrateAll
+    x
+    
 main :: IO ()
-main = let conf = defaultCaps { browser = chrome } in
-  void $ do
-  Conf user pwd <- readConfig
+main = do
+  let conf = defaultCaps { browser = chrome } 
+  Conf user pwd players <- readConfig
+
+  let playerURLs = take 3 $ matchURLs $ head players
+      stop = const False
 
   -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
-  aFewResults <- runSession defaultSession conf $
-                 loginGamedesire user pwd >> waitFor 3500000 >> resultsSource >>= getDocument -- login and get a readable XML document
-                 >>= return . getResultLines -- do the parsing of the source and create according data structures
-                 >>= return . take 5
-  mapM_ print aFewResults
+  let init = do
+        loginGamedesire user pwd
+        waitFor 3500000
+      fetchResults url = do 
+        source <- resultsSource url
+        doc <- getDocument source  
+        return . getResultLines $ doc 
+
+  runSession defaultSession conf $ do 
+    init
+    forM_ players $ \player -> do 
+        maybeLastMatch <- withDB $ getBy $ UniquePlayer player
+        results <- (`runContT` return) $ callCC $ \ret -> do
+            let getResults matches url = do 
+                    results <- lift $ fetchResults (T.unpack url)
+                    let tooOld = fromMaybe False tooOld'
+                          where
+                            tooOld' :: Maybe Bool
+                            tooOld' = do
+                                (Entity _ (LastMatch _ date')) <- maybeLastMatch
+                                match <- headMay results
+                                let matchDate' = matchDate match 
+                                return $ matchDate' > date'
+                          
+                    when (null results) $ do
+                      log $ "Results null for " `T.append` url
+                      ret matches
+
+                    when tooOld $ do
+                      log $ "Too old for " `T.append` url
+
+                      ret matches
+                    return (matches ++ results)
+
+            foldM getResults [] playerURLs
+        liftIO $ mapM_ print (take 5 results)
+        liftIO $ putStrLn $ "Found " ++ (show $ length results) ++ " Matches for " ++ (T.unpack player)  
+
+log t = liftIO $ putStrLn $ T.unpack $ t
+
 
 -- |Transform the text argument into a XML-Conduit readable document
 getDocument :: T.Text -> WD X.Document
-getDocument = return . X.parseText_ X.def . TL.fromStrict 
+getDocument = return . X.parseText_ X.def . TL.fromStrict
 
 -- |Return HTML source of results page
-resultsSource = do
-    openPage resultsURL
+resultsSource url = do
+    openPage url
     waitFor 6500000
     getSource
 
-resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&player=Momsen76&view=player_results&gg=103"
+resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=Momsen76&show=archive&gg=103"
+
+matchURLs :: T.Text -> [T.Text]
+matchURLs player =  for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
+
+starts = map (T.pack . show) [0, 30 ..]
+
 
 ---------------------------------------------------
 ----------- Some webdriver helper methods ---------

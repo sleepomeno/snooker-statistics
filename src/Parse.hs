@@ -19,9 +19,11 @@ import qualified Text.XML as X
 import qualified Text.XML.Cursor as C
 import  Text.XML.Cursor  hiding (element)
 
+import Model
+
 
 -- |Returns all the games displayed 
-getResultLines :: X.Document -> [ResultLine]
+getResultLines :: X.Document -> [Match]
 getResultLines = concatMap parseResultLines . parseHoverTable . fromDocument
 
 -- |Lookups all tables with class 'hoverTable'
@@ -29,7 +31,7 @@ parseHoverTable :: Cursor -> [Cursor]
 parseHoverTable doc =  doc $// element "table" >=> classIs "hoverTable"
 
 -- |Applies parseResultLine to all rows of the hoverTable
-parseResultLines :: Cursor -> [ResultLine]
+parseResultLines :: Cursor -> [Match]
 parseResultLines hoverTable = let trs = hoverTable $/ element "tbody" &/ element "tr"
                                   -- tdCursors = map ($/ element "td") trs :: [[Cursor]]
                                   tdCursors = hoverTable $/ element "tbody" &/ element "tr" &| child >=> element "td"
@@ -37,17 +39,17 @@ parseResultLines hoverTable = let trs = hoverTable $/ element "tbody" &/ element
 
                                 
 -- |Calls the parsing functions for the specific column and puts the results together
-parseResultLine tds = ResultLine {..}
+parseResultLine tds = Match {..}
   where
-    date = parseDate $ tds!!1
-    duration = parseDuration $ tds!!2
-    (player1, player2) = parsePlayers $ tds!!3
-    winner = parseWinner $ tds!!4
-    (ranking1, ranking2) = parseRankings $ tds!!5
-    (difference1, difference2) = parseDifference $ tds!!5
-    ranked = parseBS $ tds!!6
-    endType = parseEndType $ tds!!7
-    (maxBreak1, maxBreak2) = parseMaxBreaks $ tds!!8
+    matchDate = parseDate $ tds!!1
+    matchDuration = parseDuration $ tds!!2
+    (matchPlayer1, matchPlayer2) = parsePlayers $ tds!!3
+    matchWinner = parseWinner $ tds!!4
+    (matchRanking1, matchRanking2) = parseRankings $ tds!!5
+    (matchDifference1, matchDifference2) = parseDifference $ tds!!5
+    matchRanked = parseBS $ tds!!6
+    matchEndType = parseEndType $ tds!!7
+    (matchMaxBreak1, matchMaxBreak2) = parseMaxBreaks $ tds!!8
 
 
 ----------------------------------------------
@@ -86,14 +88,14 @@ parseRankings td =  (ranking1, ranking2)
                      ranking2 = read . unwrapText $ (!!1) $ td $// element "td" &/ content
                      
                                   
-parseWinner :: Cursor -> String
-parseWinner td = head . map unwrapText $ td $/ element "b" &/ content
+parseWinner :: Cursor -> T.Text
+parseWinner td = head $ td $/ element "b" &/ content
 
-parsePlayers :: Cursor -> (String, String)
+parsePlayers :: Cursor -> (T.Text, T.Text)
 parsePlayers td = (player1, player2)
                    where
                     playersStr td = td $// element "tr" &/ element "td" &/ element "a" &/ content
-                    [player1, player2] = map unwrapText $ playersStr td
+                    [player1, player2] = playersStr td
 
 
 parseDuration :: Cursor -> Int
