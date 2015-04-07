@@ -108,7 +108,7 @@ parseWinner td = head $ td $/ element "b" &/ content
 parsePlayers :: Cursor -> (T.Text, T.Text)
 parsePlayers td = (player1, player2)
                    where
-                    playersStr td = td $// element "tr" &/ element "td" &/ element "a" &/ content
+                    playersStr td = td $// element "tr" &/ element "td" &/ anyElement &/ content
                     [player1, player2] = playersStr td
 
 

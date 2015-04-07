@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Main where
+module Fetcher where
 
 import Prelude hiding (log)
 import           Control.Concurrent     (threadDelay)
@@ -111,7 +111,7 @@ main = withDB $ do
       stop = const False
 
   sess <- liftIO $ runWD defaultSession $ createSession conf
-  let run' = runWD sess
+  let run' = run sess
 
   -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
   let init = liftIO $ run' $ do
@@ -122,36 +122,59 @@ main = withDB $ do
         doc <- getDocument source  
         return . getResultLines $ doc 
 
-
-  -- runSession defaultSession conf $ do 
   init
+
   forM_ players $ \player -> do 
+      -- Get matches of player
       maybeLastMatch <- getBy $ UniquePlayer player
-      results <- (`runContT` return) $ callCC $ \ret -> do
+      case maybeLastMatch of
+        Just (Entity _ match) -> logInfoN $ "Last match of " <> player <> " was on " <> T.pack (show $ lastMatchDate match)
+        otherwise  -> logInfoN $ "No last match found for " <> player
+
+  
+      matchesOfPlayer <- (`runContT` return) $ callCC $ \ret -> do
           let getResults matches url = do 
                   results <- fetchResults (T.unpack url)
-                  let tooOld = fromMaybe False tooOld'
+                  logInfoN $ "Found " <> lengthT results <> " matches for " <> player <> " on " <> url
+                  let isNew = fromMaybe (const True) isNew'
                           where
-                          tooOld' :: Maybe Bool
-                          tooOld' = do
+                          isNew' :: Maybe (UTCTime -> Bool)
+                          isNew' = do
                               (Entity _ (LastMatch _ date')) <- maybeLastMatch
-                              match <- headMay results
-                              let matchDate' = matchDate match 
-                              return $ matchDate' > date'
+                              return $ \otherMatch -> otherMatch > date'
 
-                  when (null results) $ do
-                      log $ "Results null for " <> url
+                  -- forM results $ \match -> logDebugN $ (T.pack $ show (matchDate match))
+                  
+                  let results' = filter (isNew . matchDate) results 
+
+                  logInfoN $ lengthT results' <> " of them are new enough!"
+
+                  forM results' $ \match -> do
+                    insert match
+                    logDebugN $ "Insert match for " <> player <> " played on " <> T.pack (show $ matchDate match) <> " with winner " <> (matchWinner match)
+
+                  when (null results') $ do
                       ret matches
 
-                  when tooOld $ do
-                      log $ "Too old for " <> url
+                  return (matches ++ results')
 
-                      ret matches
-                  return (matches ++ results)
+          foldM getResults [] (matchURLs player)
+      logInfoN $ "Found " <> lengthT matchesOfPlayer <> " matches for player " <> player
 
-          foldM getResults [] playerURLs
-      liftIO $ mapM_ print (take 25 results)
-      liftIO $ putStrLn $ "Found " ++ (show $ length results) ++ " Matches for " ++ (T.unpack player)  
+      runMaybeT $ do 
+        newestMatch <- hoistMaybe $ headMay matchesOfPlayer
+        case maybeLastMatch of
+          Just (Entity eId eVal) -> do
+            update eId [LastMatchDate =. (matchDate newestMatch)]
+            logInfoN $ "Update last match of " <> player <> " to date " <> T.pack (show $ matchDate newestMatch)
+          Nothing -> do
+            insert $ LastMatch player (matchDate newestMatch)
+            logInfoN $ "Insert last match of " <> player <> " to date " <> T.pack (show $ matchDate newestMatch)
+        
+  -- close the session
+  -- liftIO $ runSession defaultSession conf $ finallyClose (return ())
+
+lengthT = T.pack . show . length
 
 log t = liftIO $ putStrLn $ T.unpack $ t
 

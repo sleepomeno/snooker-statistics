@@ -1,4 +1,4 @@
 loginuser = testaccount12345
 loginpwd = gregor
 
-users = p.hanpe
+users = p.hanpe,osterdolfi
