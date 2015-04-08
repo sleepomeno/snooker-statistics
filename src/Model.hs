@@ -1,5 +1,6 @@
 {-# LANGUAGE EmptyDataDecls             #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -13,11 +14,15 @@ import           Database.Persist
 import           Database.Persist.Sqlite
 import           Database.Persist.TH
 import           Data.Time
+import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Text
 import Common
 
+
+type Seconds = Int
+
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-Match
+Match json
     date UTCTime
     duration Int
     player1 Text
@@ -34,7 +39,7 @@ Match
     MatchHash duration player1 player2 winner ranking1 ranking2 maxBreak1 maxBreak2
     deriving Show
 
-LastMatch
+LastMatch json
     player Text
     date UTCTime
     UniquePlayer player

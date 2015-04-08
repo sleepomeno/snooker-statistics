@@ -1,30 +1,26 @@
 {-# LANGUAGE TemplateHaskell            #-}
 
-module Common (for, EndType, BS, Seconds) where 
+module Common where 
 
 import           Data.Time
 import           Database.Persist.TH
+import Data.Aeson.TH (deriveJSON, defaultOptions)
+import Database.Persist
+import Database.Persist.Sqlite
+import Control.Monad.Trans.Resource (runResourceT)
+import Control.Monad.Logger (runStdoutLoggingT, logDebugN, logInfoN, logWarnN, logErrorN)
+import qualified Data.Text              as T
+
 
 data EndType = TimeOut | ENDE | Disconnect | Resign deriving (Show, Read)
 derivePersistField "EndType"
+deriveJSON defaultOptions ''EndType
 
 data BS = JA | NEIN deriving (Show, Read)
 derivePersistField "BS"
-type Seconds = Int
+deriveJSON defaultOptions ''BS
+
 
 for = flip map
--- data ResultLine = ResultLine {date        :: UTCTime
---                             , duration    :: Seconds
---                             , player1     :: String
---                             , player2     :: String
---                             , winner      :: String
---                             , ranking1    :: Double
---                             , ranking2    :: Double
---                             , difference1 :: Double
---                             , difference2 :: Double
---                             , ranked      :: BS
---                             , endType     :: EndType
---                             , maxBreak1   :: Int
---                             , maxBreak2   :: Int
---                            } deriving (Show)
 
+lengthT = T.pack . show . length

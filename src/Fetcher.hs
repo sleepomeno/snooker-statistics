@@ -17,7 +17,6 @@ import           Data.Either.Utils
 import           Data.String
 import Data.Maybe
 import qualified Data.Text              as T
--- import           Data.Text.Internal (showText)
 import           Data.Functor
 import           Data.IORef
 import qualified Data.Text.Lazy         as TL
@@ -32,6 +31,7 @@ import qualified Text.XML               as X
 import           Text.XML.Cursor        hiding (element)
 
 import           Common
+import           DatabaseUtil
 import           Model
 import           Parse
 import           Text.Show.Pretty       (ppShow)
@@ -86,20 +86,6 @@ loginGamedesire user pwd = do
     submit loginForm
 type URL = String
 
--- l = lift . lift . lift
-
-
-           
--- withDB x = runSqlite "snook.db" $ do 
---     runMigration migrateAll
---     x
--- withDB x = runStdoutLoggingT $ withSqlitePool ":memory:" 1  $ \pool -> runResourceT $ flip runSqlPool pool $ do 
-withDB x = runSqlite' "snook.db" $ do
-    runMigration migrateAll
-    x
-
-runSqlite' connstr  = runResourceT . runStdoutLoggingT . withSqliteConn connstr . runSqlConn
-
 run session = runWD session
     
 main :: IO ()
@@ -149,9 +135,10 @@ main = withDB $ do
 
                   logInfoN $ lengthT results' <> " of them are new enough!"
 
-                  forM results' $ \match -> do
-                    insert match
-                    logDebugN $ "Insert match for " <> player <> " played on " <> T.pack (show $ matchDate match) <> " with winner " <> (matchWinner match)
+                  -- forM results' $ \match -> do
+                  --   insert match
+                  --   logDebugN $ "Insert match for " <> player <> " played on " <> T.pack (show $ matchDate match) <> " with winner " <> (matchWinner match)
+                  insertMany results'
 
                   when (null results') $ do
                       ret matches
@@ -174,7 +161,6 @@ main = withDB $ do
   -- close the session
   -- liftIO $ runSession defaultSession conf $ finallyClose (return ())
 
-lengthT = T.pack . show . length
 
 log t = liftIO $ putStrLn $ T.unpack $ t
 
