@@ -24,3 +24,5 @@ deriveJSON defaultOptions ''BS
 for = flip map
 
 lengthT = T.pack . show . length
+
+value & f = f $ value

@@ -2,44 +2,45 @@
 
 module Fetcher where
 
-import Prelude hiding (log)
-import           Control.Concurrent     (threadDelay)
-import           Control.Monad          (join, liftM, void, (>=>))
-import           Control.Monad.Error    (ErrorT, runErrorT)
-import           Control.Monad.IO.Class (MonadIO, liftIO)
-import           Control.Monad.Trans    (lift)
-import           Control.Monad.Trans.Maybe
-import Control.Error
-import Data.Monoid ((<>))
+import           Control.Concurrent           (threadDelay)
+import           Control.Error
+import           Control.Monad                (join, liftM, void, (>=>))
 import           Control.Monad.Cont
-import           Data.ConfigFile as C
+import           Control.Monad.Error          (ErrorT, runErrorT)
+import           Control.Monad.IO.Class       (MonadIO, liftIO)
+import           Control.Monad.Trans          (lift)
+import           Control.Monad.Trans.Maybe
+import           Data.ConfigFile              as C
 import           Data.Either.Utils
-import           Data.String
-import Data.Maybe
-import qualified Data.Text              as T
 import           Data.Functor
 import           Data.IORef
-import qualified Data.Text.Lazy         as TL
+import           Data.Maybe
+import           Data.Monoid                  ((<>))
+import           Data.String
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy               as TL
 import           Data.Time
 import           Data.Time.Format
 import           Paths
+import           Prelude                      hiding (log)
 import           System.FilePath
-import           System.IO.Unsafe       (unsafePerformIO)
+import           System.IO.Unsafe             (unsafePerformIO)
 import           Test.WebDriver
-import           Test.WebDriver.Classes (getSession)
-import qualified Text.XML               as X
-import           Text.XML.Cursor        hiding (element)
+import           Test.WebDriver.Classes       (getSession)
+import qualified Text.XML                     as X
+import           Text.XML.Cursor              hiding (element)
 
 import           Common
 import           DatabaseUtil
 import           Model
 import           Parse
-import           Text.Show.Pretty       (ppShow)
+import           Text.Show.Pretty             (ppShow)
 
-import Database.Persist
-import Database.Persist.Sqlite
-import Control.Monad.Trans.Resource (runResourceT)
-import Control.Monad.Logger (runStdoutLoggingT, logDebugN, logInfoN, logWarnN, logErrorN)
+import           Control.Monad.Logger         (logDebugN, logErrorN, logInfoN,
+                                               logWarnN, runStdoutLoggingT)
+import           Control.Monad.Trans.Resource (runResourceT)
+import           Database.Persist
+import           Database.Persist.Sqlite
 
 
 --------------------------------
@@ -74,7 +75,7 @@ loginGamedesire :: T.Text -> T.Text -> WD ()
 loginGamedesire user pwd = do
     openPage "http://www.gamedesire.com"
     setImplicitWait 3000
-    loginBtn  <- findElemByClass "login_button"
+    loginBtn  <- findElemByClass "login-button"
     click loginBtn
     liftIO $ threadDelay 3500
     findElem $ ById "overlay_login_box"
@@ -87,14 +88,13 @@ loginGamedesire user pwd = do
 type URL = String
 
 run session = runWD session
-    
+
 main :: IO ()
 main = withDB $ do
-  let conf = defaultCaps { browser = chrome } 
+  let conf = defaultCaps { browser = chrome }
   Conf user pwd players <- liftIO readConfig
 
-  let playerURLs = take 3 $ matchURLs $ head players
-      stop = const False
+  let stop = const False
 
   sess <- liftIO $ runWD defaultSession $ createSession conf
   let run' = run sess
@@ -103,23 +103,23 @@ main = withDB $ do
   let init = liftIO $ run' $ do
         loginGamedesire user pwd
         waitFor 3500000
-      fetchResults url = liftIO $ run' $ do 
+      fetchResults url = liftIO $ run' $ do
         source <- resultsSource url
-        doc <- getDocument source  
-        return . getResultLines $ doc 
+        doc <- getDocument source
+        return . getResultLines $ doc
 
   init
 
-  forM_ players $ \player -> do 
+  forM_ players $ \player -> do
       -- Get matches of player
       maybeLastMatch <- getBy $ UniquePlayer player
       case maybeLastMatch of
         Just (Entity _ match) -> logInfoN $ "Last match of " <> player <> " was on " <> T.pack (show $ lastMatchDate match)
         otherwise  -> logInfoN $ "No last match found for " <> player
 
-  
+
       matchesOfPlayer <- (`runContT` return) $ callCC $ \ret -> do
-          let getResults matches url = do 
+          let getResults matches url = do
                   results <- fetchResults (T.unpack url)
                   logInfoN $ "Found " <> lengthT results <> " matches for " <> player <> " on " <> url
                   let isNew = fromMaybe (const True) isNew'
@@ -130,8 +130,8 @@ main = withDB $ do
                               return $ \otherMatch -> otherMatch > date'
 
                   -- forM results $ \match -> logDebugN $ (T.pack $ show (matchDate match))
-                  
-                  let results' = filter (isNew . matchDate) results 
+
+                  let results' = filter (isNew . matchDate) results
 
                   logInfoN $ lengthT results' <> " of them are new enough!"
 
@@ -148,7 +148,7 @@ main = withDB $ do
           foldM getResults [] (matchURLs player)
       logInfoN $ "Found " <> lengthT matchesOfPlayer <> " matches for player " <> player
 
-      runMaybeT $ do 
+      runMaybeT $ do
         newestMatch <- hoistMaybe $ headMay matchesOfPlayer
         case maybeLastMatch of
           Just (Entity eId eVal) -> do
@@ -157,9 +157,12 @@ main = withDB $ do
           Nothing -> do
             insert $ LastMatch player (matchDate newestMatch)
             logInfoN $ "Insert last match of " <> player <> " to date " <> T.pack (show $ matchDate newestMatch)
-        
+
   -- close the session
   -- liftIO $ runSession defaultSession conf $ finallyClose (return ())
+  -- liftIO $ runWD sess $ finallyClose $ return ()
+
+  
 
 
 log t = liftIO $ putStrLn $ T.unpack $ t

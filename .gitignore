@@ -13,3 +13,4 @@ cabal.config
 /TAGS
 /selenium-server-standalone-2.42.2.jar
 .*.swp
+hakyll-frontent/_cache
