@@ -9,7 +9,9 @@ import System.FilePath
 import qualified Paths_snooker_statistics (getDataDir)
 
 getStaticDir :: IO FilePath
-getStaticDir = (</> "data") `liftM` Paths_sudoku.getDataDir
+getStaticDir = (</> "data") `liftM` Paths_snooker_statistics.getDataDir
+
+
 
 #else
 -- using GHCi

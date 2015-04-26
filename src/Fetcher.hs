@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module Fetcher where
+module Main where
 
 import           Control.Concurrent           (threadDelay)
 import           Control.Error
@@ -91,6 +91,9 @@ run session = runWD session
 
 main :: IO ()
 main = withDB $ do
+
+  dir <- liftIO getStaticDir
+  liftIO $ putStrLn $ "Write to dir " <> dir
   let conf = defaultCaps { browser = chrome }
   Conf user pwd players <- liftIO readConfig
 
@@ -181,7 +184,7 @@ resultsSource url = do
 resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=Momsen76&show=archive&gg=103"
 
 matchURLs :: T.Text -> [T.Text]
-matchURLs player =  for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
+matchURLs player =  take 10 $ for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
 
 starts = map (T.pack . show) [0, 30 ..]
 
