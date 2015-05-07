@@ -8,6 +8,7 @@
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE RecordWildCards               #-}
 module Model where
 
 import           Database.Persist
@@ -37,7 +38,7 @@ Match json
     maxBreak1 Int
     maxBreak2 Int
     MatchHash duration player1 player2 winner ranking1 ranking2 maxBreak1 maxBreak2
-    deriving Show
+    deriving Show Eq
 
 LastMatch json
     player Text
@@ -45,3 +46,8 @@ LastMatch json
     UniquePlayer player
     deriving Show
 |]
+
+instance Ord Match where
+  compare m1 m2 = if (m1 == m2 || m1 == switched m2) then EQ else GT
+   where
+    switched m@(Match{..}) = m { matchPlayer1 = matchPlayer2, matchPlayer2 = matchPlayer1, matchMaxBreak1 = matchMaxBreak2, matchMaxBreak2 = matchMaxBreak1, matchRanking1 = matchRanking2, matchRanking2 = matchRanking1, matchDifference1 = matchDifference2, matchDifference2 = matchDifference1}

@@ -12,11 +12,11 @@ import Control.Monad.Logger (runStdoutLoggingT, logDebugN, logInfoN, logWarnN, l
 import qualified Data.Text              as T
 
 
-data EndType = TimeOut | ENDE | Disconnect | Resign deriving (Show, Read)
+data EndType = TimeOut | ENDE | Disconnect | Resign deriving (Show, Read, Eq)
 derivePersistField "EndType"
 deriveJSON defaultOptions ''EndType
 
-data BS = JA | NEIN deriving (Show, Read)
+data BS = JA | NEIN deriving (Show, Read, Eq)
 derivePersistField "BS"
 deriveJSON defaultOptions ''BS
 

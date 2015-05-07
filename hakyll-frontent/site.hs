@@ -21,33 +21,24 @@ main = hakyll $ do
     --         >>= loadAndApplyTemplate "templates/default.html" defaultContext
     --         >>= relativizeUrls
 
-    -- match "posts/*" $ do
-    --     route $ setExtension "html"
-    --     compile $ pandocCompiler
-    --         >>= loadAndApplyTemplate "templates/post.html"    postCtx
-    --         >>= loadAndApplyTemplate "templates/default.html" postCtx
-    --         >>= relativizeUrls
+    match "breaks/*" $ do
+        route $ setExtension "html"
+        compile $ pandocCompiler
+            >>= loadAndApplyTemplate "templates/default.html" defaultContext
+            >>= relativizeUrls
+        -- compile withPosts
 
-    -- create ["archive.html"] $ do
-    --     route idRoute
-    --     compile $ do
-    --         posts <- recentFirst =<< loadAll "posts/*"
-    --         let archiveCtx =
-    --                 listField "posts" postCtx (return posts) `mappend`
-    --                 constField "title" "Archives"            `mappend`
-    --                 defaultContext
-
-    --         makeItem ""
-    --             >>= loadAndApplyTemplate "templates/archive.html" archiveCtx
-    --             >>= loadAndApplyTemplate "templates/default.html" archiveCtx
-    --             >>= relativizeUrls
 
     match "lastMatches.markdown" $ do
-      route $ constRoute "index.html"
-      compile $ pandocCompiler
-        >>= loadAndApplyTemplate "templates/default.html" defaultContext
-        >>= relativizeUrls
+      route $ constRoute "lastMatches.html"
+      compile $ pandocCompiler >>= loadAndApplyTemplate "templates/default.html" defaultContext
+            >>= relativizeUrls
 
+
+    match "index.html" $ do
+      route idRoute
+      compile withPosts
+        
     -- match "index.html" $ do
     --     route $ constRoute "lastMatches.markdown"
     --     compile $ do
@@ -66,7 +57,14 @@ main = hakyll $ do
 
 
 --------------------------------------------------------------------------------
-postCtx :: Context String
-postCtx =
-    dateField "date" "%B %e, %Y" `mappend`
-    defaultContext
+
+withPosts = do
+    pandocCompiler
+    posts <- loadAll "breaks/*"
+    let indexCtx =
+            listField "posts" defaultContext (return posts) `mappend`
+            constField "title" "Home"                `mappend`
+            defaultContext
+    getResourceBody >>= applyAsTemplate indexCtx
+        >>= loadAndApplyTemplate "templates/default.html" indexCtx
+        >>= relativizeUrls 

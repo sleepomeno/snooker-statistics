@@ -30,16 +30,7 @@ fi
 
 echo "Exit code of MarkdownWriter: $?" >> logs/run.log
 
-./hakyll-frontent/.cabal-sandbox/bin/site rebuild >>logs/hakyll.log 2>&1
-
-rm -rf /home/greg/octopress-master/desire/*
-
-cp -R hakyll-frontent/_site/* /home/greg/octopress-master/desire/
-
-cd /home/greg/octopress-master
-git add desire
-git commit -m "Update desire at $(date)"
-git push
+./move-markdown.sh
 
 echo "Stop at $(date)" >> logs/run.log
 
