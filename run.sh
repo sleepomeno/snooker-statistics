@@ -1,5 +1,6 @@
 #!/bin/bash
 
+cd /home/greg/haskell/snooker-statistics/ 
 echo "Start at $(date)" >> logs/run.log
 
 java -jar selenium-server-standalone-2.42.2.jar -Dwebdriver.chrome.bin=/usr/bin/google-chrome -DwebDriver.chrome.driver=./chromedriver &

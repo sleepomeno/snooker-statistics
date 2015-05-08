@@ -184,7 +184,7 @@ resultsSource url = do
 resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=Momsen76&show=archive&gg=103"
 
 matchURLs :: T.Text -> [T.Text]
-matchURLs player =  take 10 $ for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
+matchURLs player = for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
 
 starts = map (T.pack . show) [0, 30 ..]
 

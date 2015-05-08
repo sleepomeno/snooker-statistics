@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, TupleSections, RecordWildCards, OverloadedStrings #-}
 
 module Main where
 
@@ -52,55 +52,92 @@ breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
                                       else
                                         matchMaxBreak2 match
 
-maximumBreak player = L.Fold (\break match -> max break (breakOf player match)) 0 id
-
+maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 id
 
 
 players = ["osterdolfi", "p.hanpe", "_The_Rocket_" , "Momsen76" ]
--- players = ["osterdolfi", "p.hanpe", "Momsen76"]
 
--- breakSum :: T.Text -> L.Fold (Entity (MatchGeneric backend)) Float
-breakSum player = L.Fold (\break match -> break + (breakOf player match)) (0 :: Float) id
+breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) id
+
+data MatchStats = MatchStats {
+    avgBreak :: Float
+  , maxiBreak     :: Int
+  , numberMatches    :: Int
+  , numberWins :: Int
+  , stepsResults        :: [Step]
+    } deriving (Show, Read)
+
+data Step = Step {
+    step     :: Int
+  , howMany  :: Int
+  , won      :: Int
+} deriving (Show, Read)
+
 
 breaksMarkdown player = do
   let breaksDir = "/home/greg/haskell/snooker-statistics/hakyll-frontent/breaks" :: FilePath
-  let matchesWith opts =  selectList opts []
+  let matchesWith opts = S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList opts [Desc MatchDate]
+
   let matchesWithBreak break = matchesWith $ [MatchPlayer1 ==. player, MatchMaxBreak1 >=. break] ||. [MatchPlayer2 ==. player, MatchMaxBreak2 >=. break]
-  matchesOfPlayer <- S.toList . S.fromList . map (\(Entity _ match) -> match) <$> (matchesWith ([MatchPlayer1 ==. player] ||. [MatchPlayer2 ==. player]))
 
-  -- let average = L.fold (breakSum player) matchesOfPlayer
-  let averageBreak :: String
-      averageBreak = printf "%.2f\n" $ L.fold ((/) <$> (breakSum player) <*> L.genericLength) matchesOfPlayer
-      maxBreak :: String
-      maxBreak = show $ L.fold (maximumBreak player) matchesOfPlayer
+  matchesOfPlayer <- matchesWith ([MatchPlayer1 ==. player] ||. [MatchPlayer2 ==. player])
+  let steps = [10, 20 .. 140] ++ [147]
+
+  let averageBreak' = (/) <$> breakSum player <*> L.genericLength
+      maxBreak' = maximumBreak player
+      nrMatches' = L.genericLength
+
+      nrWins' = L.Fold (\ !nr match -> if matchWinner match == player then nr +1 else nr) 0 id
+
+      matchesWithBreak' break = L.Fold (\(! nr, !won) match -> if (breakOf player match >= break) then
+                                                            (nr+1, if matchWinner match == player then won + 1 else won)
+                                                           else
+                                                            (nr, won)) (0,0) (\(nr, won) -> [Step break nr won])
+      matchStats :: MatchStats
+      matchStats = L.fold (MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> mconcat (map matchesWithBreak' steps)) matchesOfPlayer
+
+  let inPercent :: Int -> Int -> String
+      inPercent n1 0 = "0"
+      inPercent n1 n2 = printf "%.2f\n" $ (((100*) $ (fromIntegral $ n1) / (fromIntegral n2)) :: Double)
   
-  let nrMatches = length matchesOfPlayer
-  liftIO $ putStrLn $ show nrMatches
-  let steps = [20, 30 .. 140] ++ [147]
-
-  let ofAll :: [a] -> String
-      ofAll matches = printf "%.2f\n" $ (((100*) $ (fromIntegral $ length matches) / (fromIntegral nrMatches)) :: Float)
-
-  breaks <- forM steps $ \step -> do
-    (step,) <$> (fmap ofAll $ matchesWithBreak step)
+  let averageBreak :: String
+      averageBreak = printf "%.2f\n" $ avgBreak matchStats
+      maxBreak :: String
+      maxBreak = show $ maxiBreak matchStats
+      nrMatches = numberMatches matchStats
+      steps' = stepsResults matchStats
+      breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
 
   let header = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
-      asH2 = renderHtml . H.h2 . H.toHtml
-      averageOutput = asH2 $ "Average Break: " <> averageBreak
-      nrMatchesInAccount = asH2 $ (show nrMatches) <> " Matches in Statistik"
-      maximumBreak' = asH2 $ "Max Break: " <> maxBreak
+      -- asH2 = H.h2 . H.toHtml
+      asH2 = H.div ! class_ "stat"
+      right = (H.span ! class_ "right") . H.toHtml
+      left = H.span ! class_ "left"
+      averageOutput = asH2 $ left "Average Max: " >> right averageBreak
+      nrMatchesInAccount = asH2 $ left "Matches: " >> right (show nrMatches)
+      maximumBreak' = asH2 $ left "Max Break: " >> right maxBreak
+      nrWins = asH2 $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
+      infoBox = renderHtml $ H.div ! class_ "playerInfo" $ do
+        nrMatchesInAccount
+        nrWins
+        maximumBreak'
+        averageOutput
 
-  let allBreaks = mconcat $ for breaks $ \(step, part) -> do
+  let allBreaks = mconcat $ for breaks $ \(step, percent, absolute, won) -> do
         H.tr $ do
            H.td $ H.span (H.toHtml step)
-           H.td $ H.span (H.toHtml part )
-      breakTable = renderHtml $ H.table $ do
+           H.td $ H.span (H.toHtml percent)
+           H.td $ H.span (H.toHtml absolute)
+           H.td $ H.span (H.toHtml won)
+      breakTable = renderHtml $ H.table ! class_ "breaksTable" $ do
         H.thead $ H.tr $ do 
-            H.td (H.span "Mehr als")
-            H.td (H.span "In Prozent")
+            H.th (H.span "Break >=")
+            H.th (H.span "Prozent")
+            H.th (H.span "Absolut")
+            H.th (H.span "Win %")
         H.tbody $ allBreaks
       
-      output = LT.toStrict $ header <> nrMatchesInAccount <> maximumBreak' <> averageOutput <> breakTable
+      output = LT.toStrict $ header <> infoBox <> breakTable
       encode :: Char -> String
       encode '_' = "%5F"
       encode c = [c]
@@ -123,11 +160,11 @@ lastMatchesFile = do
 
 lastMatchesMarkdown = do 
   matchesFile <- return "/home/greg/haskell/snooker-statistics/hakyll-frontent/lastMatches.markdown"
-  matches' <- take 50 <$> selectList [] [Desc MatchDate]
-  let matches = S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches' 
+  matches' <- selectList [] [Desc MatchDate]
+  let matches = take 50 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches' 
 
   let matchesByDate :: [((Integer, Int, Int), [Match])]
-      matchesByDate =  matches' & map (\(Entity matchId match) -> (toGregorian $ utctDay $ matchDate match, match))
+      matchesByDate =  matches & map (\match -> (toGregorian $ utctDay $ matchDate match, match))
                    & groupBy ((==) `on` fst)  & map (first head . unzip)  
 
       header = "---\ntitle: Last matches\n---\n\n"

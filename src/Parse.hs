@@ -73,7 +73,10 @@ parseBS :: Cursor -> BS
 parseBS td = head . map (read . unwrapText) $ td $/ content
 
 parseDifference :: Cursor -> (Double, Double)
-parseDifference td = (r1, r2)
+parseDifference td = if isUnranked td then
+                       (0, 0)
+                     else
+                       (r1, r2)
                      where
                      tdContents = map show $ td $// element "td" &/ content
                      r2Str = tdContents!!2
@@ -96,10 +99,14 @@ parseDifference td = (r1, r2)
                        
 
 parseRankings :: Cursor -> (Double, Double)
-parseRankings td =  (ranking1, ranking2)
+parseRankings td =  if isUnranked td then
+                      (0, 0)
+                    else (ranking1, ranking2)
                    where
                      ranking1 = read . head . map unwrapText $ td $// element "font" &/ content
                      ranking2 = read . unwrapText $ (!!1) $ td $// element "td" &/ content
+
+isUnranked td = (/= 2) . length $ td $// element "tr"
                      
                                   
 parseWinner :: Cursor -> T.Text
