@@ -55,7 +55,7 @@ breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
 maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 id
 
 
-players = ["osterdolfi", "p.hanpe", "_The_Rocket_" , "Momsen76" ]
+players = ["herbyger","osterdolfi", "p.hanpe", "_The_Rocket_" , "Momsen76" ]
 
 breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) id
 
@@ -93,56 +93,74 @@ breaksMarkdown player = do
                                                             (nr+1, if matchWinner match == player then won + 1 else won)
                                                            else
                                                             (nr, won)) (0,0) (\(nr, won) -> [Step break nr won])
-      matchStats :: MatchStats
-      matchStats = L.fold (MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> mconcat (map matchesWithBreak' steps)) matchesOfPlayer
-
-  let inPercent :: Int -> Int -> String
-      inPercent n1 0 = "0"
-      inPercent n1 n2 = printf "%.2f\n" $ (((100*) $ (fromIntegral $ n1) / (fromIntegral n2)) :: Double)
-  
-  let averageBreak :: String
-      averageBreak = printf "%.2f\n" $ avgBreak matchStats
-      maxBreak :: String
-      maxBreak = show $ maxiBreak matchStats
-      nrMatches = numberMatches matchStats
-      steps' = stepsResults matchStats
-      breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
-
-  let header = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
-      -- asH2 = H.h2 . H.toHtml
-      asH2 = H.div ! class_ "stat"
-      right = (H.span ! class_ "right") . H.toHtml
-      left = H.span ! class_ "left"
-      averageOutput = asH2 $ left "Average Max: " >> right averageBreak
-      nrMatchesInAccount = asH2 $ left "Matches: " >> right (show nrMatches)
-      maximumBreak' = asH2 $ left "Max Break: " >> right maxBreak
-      nrWins = asH2 $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
-      infoBox = renderHtml $ H.div ! class_ "playerInfo" $ do
-        nrMatchesInAccount
-        nrWins
-        maximumBreak'
-        averageOutput
-
-  let allBreaks = mconcat $ for breaks $ \(step, percent, absolute, won) -> do
-        H.tr $ do
-           H.td $ H.span (H.toHtml step)
-           H.td $ H.span (H.toHtml percent)
-           H.td $ H.span (H.toHtml absolute)
-           H.td $ H.span (H.toHtml won)
-      breakTable = renderHtml $ H.table ! class_ "breaksTable" $ do
-        H.thead $ H.tr $ do 
-            H.th (H.span "Break >=")
-            H.th (H.span "Prozent")
-            H.th (H.span "Absolut")
-            H.th (H.span "Win %")
-        H.tbody $ allBreaks
+      statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> mconcat (map matchesWithBreak' steps)
       
-      output = LT.toStrict $ header <> infoBox <> breakTable
+      ranges = [10, 20, 30, 50, 100] :: [Int]
+      rangesStr :: [String]
+      rangesStr = ["ten","twenty","thirty","fifty","hundred","all"]
+      breaksOfLast :: Int -> L.Fold Match MatchStats
+      breaksOfLast range = case statsFold of
+        L.Fold step begin done -> L.Fold (\ (nr, matchStats') match -> if nr < range then (nr+1, step matchStats' match) else (nr, matchStats')) (0,begin) (done . snd)
+      allFolds  = mconcat (map (fmap (:[]) . breaksOfLast) ranges ++ [(fmap (:[]) statsFold)])  
+
+      -- matchStats :: MatchStats
+      -- matchStats = L.fold statsFold matchesOfPlayer
+
+      results = L.fold allFolds matchesOfPlayer :: [MatchStats]
+
+  let matchStatsToOutput matchStats = do 
+
+        let inPercent :: Int -> Int -> String
+            inPercent n1 0 = "0"
+            inPercent n1 n2 = printf "%.2f\n" $ (((100*) $ (fromIntegral $ n1) / (fromIntegral n2)) :: Double)
+
+        let averageBreak :: String
+            averageBreak = printf "%.2f\n" $ avgBreak matchStats
+            maxBreak :: String
+            maxBreak = show . maxiBreak $ matchStats
+            nrMatches = numberMatches matchStats
+            steps' = stepsResults matchStats
+            breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
+
+        let header = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
+            stat = H.div ! class_ "stat"
+            right = (H.span ! class_ "right") . H.toHtml
+            left = H.span ! class_ "left"
+            averageOutput = stat $ left "Average Max: " >> right averageBreak
+            nrMatchesInAccount = stat $ left "Matches: " >> right (show nrMatches)
+            maximumBreak' = stat $ left "Max Break: " >> right maxBreak
+            nrWins = stat $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
+            infoBox = renderHtml $ H.div ! class_ "playerInfo" $ do
+                nrMatchesInAccount
+                nrWins
+                maximumBreak'
+                averageOutput
+
+        let allBreaks = mconcat $ for breaks $ \(step, percent, absolute, won) -> do
+                H.tr $ do
+                    H.td $ H.span (H.toHtml step)
+                    H.td $ H.span (H.toHtml percent)
+                    H.td $ H.span (H.toHtml absolute)
+                    H.td $ H.span (H.toHtml won)
+            breakTable = renderHtml $ H.table ! class_ "breaksTable" $ do
+                H.thead $ H.tr $ do 
+                    H.th (H.span "Break >=")
+                    H.th (H.span "Prozent")
+                    H.th (H.span "Absolut")
+                    H.th (H.span "Win %")
+                H.tbody $ allBreaks
+
+            output = LT.toStrict $ header <> infoBox <> breakTable
+        return output
+
+  results' <- mapM matchStatsToOutput results
+  let captionedResults = zip rangesStr results'
       encode :: Char -> String
       encode '_' = "%5F"
       encode c = [c]
-  
-  liftIO $ writeFile (breaksDir </> (concatMap encode (T.unpack player) <> ".markdown")) output
+
+  forM captionedResults $ \(str, output) -> 
+    liftIO $ writeFile (breaksDir </> (str <> "-" <> concatMap encode (T.unpack player) <> ".markdown")) output
 
 lastMatchesFile :: IO String
 lastMatchesFile = do
@@ -194,4 +212,4 @@ matchHTML (Match{..}) = do
       maxBreakWinner = T.pack . show $ if matchWinner == matchPlayer1 then matchMaxBreak1 else matchMaxBreak2
       maxBreakLoser = T.pack . show $ if loser == matchPlayer1 then matchMaxBreak1 else matchMaxBreak2
   H.div $
-    H.b (H.toHtml $ matchWinner <> " (" <> maxBreakWinner <> ")") <> H.span (H.toHtml $ " beats " <> (loser <> " (" <> maxBreakLoser <> ")"))
+    H.b (H.toHtml $ matchWinner <> " (" <> maxBreakWinner <> ")") <> H.span (H.toHtml $ " schlägt " <> (loser <> " (" <> maxBreakLoser <> ")"))

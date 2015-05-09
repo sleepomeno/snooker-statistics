@@ -89,3 +89,11 @@ table.breaksTable td {
     clear: both;
 }
 
+.breakContainer {
+    float: left;
+    margin-right: 10px;
+}
+
+.clearer {
+    clear: both;
+}

@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.Monoid (mappend)
 import           Hakyll
+import Data.Monoid ((<>), mconcat)
 
 
 --------------------------------------------------------------------------------
@@ -15,29 +16,30 @@ main = hakyll $ do
         route   idRoute
         compile compressCssCompiler
 
-    -- match (fromList ["about.rst", "contact.markdown"]) $ do
-    --     route   $ setExtension "html"
-    --     compile $ pandocCompiler
-    --         >>= loadAndApplyTemplate "templates/default.html" defaultContext
-    --         >>= relativizeUrls
+    let showPlayer = do
+          route $ setExtension "html"
+          compile $ pandocCompiler >>= loadAndApplyTemplate "templates/default.html" defaultContext >>= relativizeUrls
 
-    match "breaks/*" $ do
-        route $ setExtension "html"
-        compile $ pandocCompiler
-            >>= loadAndApplyTemplate "templates/default.html" defaultContext
-            >>= relativizeUrls
-        -- compile withPosts
+    let ranges' = ["all", "ten", "twenty", "thirty", "fifty", "hundred"] :: [String]
+        ranges = flip map ranges' $ \range -> fromGlob $ "breaks/" <> range <> "-*"
 
+    flip mapM ranges $ \url -> match url showPlayer
 
     match "lastMatches.markdown" $ do
       route $ constRoute "lastMatches.html"
       compile $ pandocCompiler >>= loadAndApplyTemplate "templates/default.html" defaultContext
             >>= relativizeUrls
 
-
     match "index.html" $ do
       route idRoute
-      compile withPosts
+      compile $ do
+        pandocCompiler
+        playerPages <- mapM loadAll ranges
+        let indexCtx = mconcat (zipWith (\str posts -> listField str defaultContext (return posts)) ranges' playerPages)
+                       `mappend` constField "title" "Home" `mappend` defaultContext
+        getResourceBody >>= applyAsTemplate indexCtx
+          >>= loadAndApplyTemplate "templates/default.html" indexCtx
+          >>= relativizeUrls 
         
     -- match "index.html" $ do
     --     route $ constRoute "lastMatches.markdown"
@@ -58,13 +60,13 @@ main = hakyll $ do
 
 --------------------------------------------------------------------------------
 
-withPosts = do
-    pandocCompiler
-    posts <- loadAll "breaks/*"
-    let indexCtx =
-            listField "posts" defaultContext (return posts) `mappend`
-            constField "title" "Home"                `mappend`
-            defaultContext
-    getResourceBody >>= applyAsTemplate indexCtx
-        >>= loadAndApplyTemplate "templates/default.html" indexCtx
-        >>= relativizeUrls 
+-- withPosts = do
+--     pandocCompiler
+--     posts <- loadAll "breaks/*"
+--     let indexCtx =
+--             listField "posts" defaultContext (return posts) `mappend`
+--             constField "title" "Home"                `mappend`
+--             defaultContext
+--     getResourceBody >>= applyAsTemplate indexCtx
+--         >>= loadAndApplyTemplate "templates/default.html" indexCtx
+--         >>= relativizeUrls 
