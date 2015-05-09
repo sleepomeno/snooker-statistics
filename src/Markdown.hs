@@ -1,50 +1,54 @@
-{-# LANGUAGE BangPatterns, TupleSections, RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, OverloadedStrings, RecordWildCards, TupleSections #-}
 
 module Main where
 
-import Prelude hiding (writeFile)
-import Data.Aeson
-import qualified Data.ByteString.Lazy.Char8 as BL
-import Model
-import           Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad
+import           Control.Monad
+import           Control.Monad.IO.Class        (MonadIO, liftIO)
+import           Data.Aeson hiding ((.=))
+import qualified Data.ByteString.Lazy.Char8    as BL
+import           Model
+import           Prelude                       hiding (writeFile)
 
-import Data.List (groupBy, nub)
+import           Data.List                     (groupBy, nub)
 
-import DatabaseUtil
-import Database.Persist
-import Data.Time.Clock
-import Data.Time.Calendar (toGregorian)
-import Data.Monoid ((<>))
-import Control.Applicative ((<$>))
-import Control.Monad.Logger (logDebugN, logInfoN, logWarnN, logErrorN)
+import           Control.Applicative           ((<$>))
+import           Control.Monad.Logger          (logDebugN, logErrorN, logInfoN,
+                                                logWarnN)
+import           Data.Monoid                   ((<>))
+import           Data.Time.Calendar            (toGregorian)
+import           Data.Time.Clock
+import           Database.Persist
+import           DatabaseUtil
 
-import Data.Function (on)
+import           Data.Function                 (on)
 
-import Control.Arrow (first)
-import Control.Applicative
+import           Control.Applicative
+import           Control.Arrow                 (first)
 
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as LT
-import qualified Control.Foldl as L
+import qualified Control.Foldl                 as L
+import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as LT
 
-import Common
+import           Common
 
 -- import Text.Blaze.Html
-import Text.Blaze.Html5 as H hiding (map, head)
-import Text.Blaze.Html.Renderer.Text  (renderHtml)
-import Text.Blaze.Html5.Attributes as A hiding (for, id, max)
+import           Text.Blaze.Html.Renderer.Text (renderHtml)
+import           Text.Blaze.Html5              as H hiding (head, map)
+import           Text.Blaze.Html5.Attributes   as A hiding (for, id, max)
 
-import Data.Monoid (mconcat)
+import           Data.Monoid                   (mconcat)
 
-import Data.Text.IO (writeFile)
-import           Paths
-import           System.FilePath ((</>))
-import           Data.ConfigFile              as C
-import           Control.Monad.Error          (ErrorT, runErrorT)
+import           Control.Monad.Error           (ErrorT, runErrorT)
+import           Data.ConfigFile               as C
 import           Data.Either.Utils
-import Text.Printf
-import qualified Data.Set as S
+import qualified Data.Set                      as S
+import           Data.Text.IO                  (writeFile)
+import           Paths
+import           System.FilePath               ((</>))
+import           Text.Printf
+
+import Graphics.Rendering.Chart.Easy
+import Graphics.Rendering.Chart.Backend.Cairo
 
 
 breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
@@ -52,26 +56,41 @@ breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
                                       else
                                         matchMaxBreak2 match
 
+rankingOf player match =  if (matchPlayer1 match == player) then
+                            matchRanking1 match
+                          else
+                            matchRanking2 match
+
+rankingF player = L.Fold (\rankings match -> (rankingOf player match) : rankings) ([] :: [Double]) id
+
 maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 id
 
 
 players = ["herbyger","osterdolfi", "p.hanpe", "_The_Rocket_" , "Momsen76" ]
 
 breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) id
+durationF = L.Fold (\ duration match -> duration + matchDuration match) (0 :: Int) id
 
 data MatchStats = MatchStats {
-    avgBreak :: Float
+    avgBreak      :: Float
   , maxiBreak     :: Int
-  , numberMatches    :: Int
-  , numberWins :: Int
-  , stepsResults        :: [Step]
+  , numberMatches :: Int
+  , numberWins    :: Int
+  , durationAcc   :: Int
+  , rankings      :: [Double]
+  , stepsResults  :: [Step]
     } deriving (Show, Read)
 
 data Step = Step {
-    step     :: Int
-  , howMany  :: Int
-  , won      :: Int
+    step    :: Int
+  , howMany :: Int
+  , won     :: Int
 } deriving (Show, Read)
+
+-- plotRanking caption player values = toFile def "example4_big.png" $ do
+rankingPlot caption player values = do
+    layout_title .= caption
+    plot (line player [(zipWith (\i value -> (i, LogValue value)) ([0..] :: [Int]) values)])
 
 
 breaksMarkdown player = do
@@ -93,22 +112,28 @@ breaksMarkdown player = do
                                                             (nr+1, if matchWinner match == player then won + 1 else won)
                                                            else
                                                             (nr, won)) (0,0) (\(nr, won) -> [Step break nr won])
-      statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> mconcat (map matchesWithBreak' steps)
-      
+      statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> durationF <*> rankingF player <*> mconcat (map matchesWithBreak' steps)
+
       ranges = [10, 20, 30, 50, 100] :: [Int]
       rangesStr :: [String]
       rangesStr = ["ten","twenty","thirty","fifty","hundred","all"]
       breaksOfLast :: Int -> L.Fold Match MatchStats
       breaksOfLast range = case statsFold of
         L.Fold step begin done -> L.Fold (\ (nr, matchStats') match -> if nr < range then (nr+1, step matchStats' match) else (nr, matchStats')) (0,begin) (done . snd)
-      allFolds  = mconcat (map (fmap (:[]) . breaksOfLast) ranges ++ [(fmap (:[]) statsFold)])  
+      allFolds  = mconcat (map (fmap (:[]) . breaksOfLast) ranges ++ [(fmap (:[]) statsFold)])
 
       -- matchStats :: MatchStats
       -- matchStats = L.fold statsFold matchesOfPlayer
 
       results = L.fold allFolds matchesOfPlayer :: [MatchStats]
 
-  let matchStatsToOutput matchStats = do 
+      identifier str = (str <> "-" <> concatMap encode (T.unpack player))
+      encode :: Char -> String
+      -- encode '_' = "%5F"
+      encode '_' = "-"
+      encode c = [c]
+
+  let matchStatsToOutput (rangeStr, matchStats) = do
 
         let inPercent :: Int -> Int -> String
             inPercent n1 0 = "0"
@@ -121,6 +146,15 @@ breaksMarkdown player = do
             nrMatches = numberMatches matchStats
             steps' = stepsResults matchStats
             breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
+            duration :: String
+            duration = let avgDuration :: Int
+                           avgDuration = round (((fromIntegral $ durationAcc matchStats) / (fromIntegral nrMatches)) :: Double)
+                           (mins, secs) = divMod avgDuration 60
+                           show' = printf "%02d"
+                           in
+                        show' mins <> ":" <> show' secs
+            plot = rankingPlot ("Ranking of " <> (T.unpack player)) (T.unpack player) (rankings matchStats)
+                        
 
         let header = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
             stat = H.div ! class_ "stat"
@@ -130,9 +164,15 @@ breaksMarkdown player = do
             nrMatchesInAccount = stat $ left "Matches: " >> right (show nrMatches)
             maximumBreak' = stat $ left "Max Break: " >> right maxBreak
             nrWins = stat $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
+            duration' = stat $ left "Average Dauer: " >> right duration
+
+            rankingBox = renderHtml $ H.div ! class_ "rankingBox" $ do
+              H.img ! src (H.stringValue $ identifier rangeStr <> ".png") 
+
             infoBox = renderHtml $ H.div ! class_ "playerInfo" $ do
                 nrMatchesInAccount
                 nrWins
+                duration'
                 maximumBreak'
                 averageOutput
 
@@ -143,24 +183,21 @@ breaksMarkdown player = do
                     H.td $ H.span (H.toHtml absolute)
                     H.td $ H.span (H.toHtml won)
             breakTable = renderHtml $ H.table ! class_ "breaksTable" $ do
-                H.thead $ H.tr $ do 
+                H.thead $ H.tr $ do
                     H.th (H.span "Break >=")
                     H.th (H.span "Prozent")
                     H.th (H.span "Absolut")
                     H.th (H.span "Win %")
                 H.tbody $ allBreaks
 
-            output = LT.toStrict $ header <> infoBox <> breakTable
-        return output
+            output = LT.toStrict $ header <> infoBox <> breakTable <> rankingBox
+        return (rangeStr, output, plot)
 
-  results' <- mapM matchStatsToOutput results
-  let captionedResults = zip rangesStr results'
-      encode :: Char -> String
-      encode '_' = "%5F"
-      encode c = [c]
+  results' <- mapM matchStatsToOutput (zip rangesStr results)
 
-  forM captionedResults $ \(str, output) -> 
-    liftIO $ writeFile (breaksDir </> (str <> "-" <> concatMap encode (T.unpack player) <> ".markdown")) output
+  forM results' $ \(str, output, plot) -> do
+    liftIO $ writeFile (breaksDir </> identifier str <> ".markdown") output
+    liftIO $ toFile def (breaksDir </> identifier str <> ".png") plot
 
 lastMatchesFile :: IO String
 lastMatchesFile = do
@@ -176,14 +213,14 @@ lastMatchesFile = do
   let file = forceEither eitherConfig
   return file
 
-lastMatchesMarkdown = do 
+lastMatchesMarkdown = do
   matchesFile <- return "/home/greg/haskell/snooker-statistics/hakyll-frontent/lastMatches.markdown"
   matches' <- selectList [] [Desc MatchDate]
-  let matches = take 50 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches' 
+  let matches = take 50 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches'
 
   let matchesByDate :: [((Integer, Int, Int), [Match])]
       matchesByDate =  matches & map (\match -> (toGregorian $ utctDay $ matchDate match, match))
-                   & groupBy ((==) `on` fst)  & map (first head . unzip)  
+                   & groupBy ((==) `on` fst)  & map (first head . unzip)
 
       header = "---\ntitle: Last matches\n---\n\n"
 
@@ -191,7 +228,7 @@ lastMatchesMarkdown = do
         H.div ! class_ "matchesOfDay" $ dateHTML date <> (mconcat $ map matchHTML matches)
 
       output = LT.toStrict $ header <> (renderHtml dayHTMLs)
-  
+
   liftIO $ writeFile matchesFile output
 
 main :: IO ()
@@ -206,7 +243,7 @@ dateHTML (year, month, day) = do
 
   H.div $ H.h2 $
     day' <> "." <> month' <> "." <> year'
-    
+
 matchHTML (Match{..}) = do
   let loser = if matchWinner == matchPlayer1 then matchPlayer2 else matchPlayer1
       maxBreakWinner = T.pack . show $ if matchWinner == matchPlayer1 then matchMaxBreak1 else matchMaxBreak2

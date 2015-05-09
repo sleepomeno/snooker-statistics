@@ -25,4 +25,4 @@ for = flip map
 
 lengthT = T.pack . show . length
 
-value & f = f $ value
+-- value & f = f $ value

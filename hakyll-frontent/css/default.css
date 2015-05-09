@@ -97,3 +97,7 @@ table.breaksTable td {
 .clearer {
     clear: both;
 }
+
+.rankingBox {
+    margin-top: 30px;
+}

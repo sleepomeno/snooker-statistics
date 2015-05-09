@@ -21,9 +21,13 @@ main = hakyll $ do
           compile $ pandocCompiler >>= loadAndApplyTemplate "templates/default.html" defaultContext >>= relativizeUrls
 
     let ranges' = ["all", "ten", "twenty", "thirty", "fifty", "hundred"] :: [String]
-        ranges = flip map ranges' $ \range -> fromGlob $ "breaks/" <> range <> "-*"
+        ranges fileType = flip map ranges' $ \range -> fromGlob $ "breaks/" <> range <> "-*." <> fileType
 
-    flip mapM ranges $ \url -> match url showPlayer
+    flip mapM (ranges "markdown") $ \url -> match url showPlayer
+
+    flip mapM (ranges "png") $ \url -> match url $ do
+      route idRoute
+      compile copyFileCompiler
 
     match "lastMatches.markdown" $ do
       route $ constRoute "lastMatches.html"
@@ -34,7 +38,7 @@ main = hakyll $ do
       route idRoute
       compile $ do
         pandocCompiler
-        playerPages <- mapM loadAll ranges
+        playerPages <- mapM loadAll (ranges "markdown")
         let indexCtx = mconcat (zipWith (\str posts -> listField str defaultContext (return posts)) ranges' playerPages)
                        `mappend` constField "title" "Home" `mappend` defaultContext
         getResourceBody >>= applyAsTemplate indexCtx
