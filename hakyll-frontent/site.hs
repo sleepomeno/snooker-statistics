@@ -18,12 +18,18 @@ main = hakyll $ do
 
     let showPlayer = do
           route $ setExtension "html"
-          compile $ pandocCompiler >>= loadAndApplyTemplate "templates/default.html" defaultContext >>= relativizeUrls
+          compile $ getResourceBody >>= loadAndApplyTemplate "templates/default.html" defaultContext >>= relativizeUrls
 
     let ranges' = ["all", "ten", "twenty", "thirty", "fifty", "hundred"] :: [String]
         ranges fileType = flip map ranges' $ \range -> fromGlob $ "breaks/" <> range <> "-*." <> fileType
+        rivalries fileType = fromGlob $ "rivalries/*." <> fileType
 
-    flip mapM (ranges "markdown") $ \url -> match url showPlayer
+    match (rivalries "html") $ showPlayer
+    match (rivalries "png") $ do
+      route idRoute
+      compile copyFileCompiler
+
+    flip mapM (ranges "html") $ \url -> match url showPlayer
 
     flip mapM (ranges "png") $ \url -> match url $ do
       route idRoute
@@ -38,8 +44,9 @@ main = hakyll $ do
       route idRoute
       compile $ do
         pandocCompiler
-        playerPages <- mapM loadAll (ranges "markdown")
-        let indexCtx = mconcat (zipWith (\str posts -> listField str defaultContext (return posts)) ranges' playerPages)
+        playerPages <- mapM loadAll (ranges "html")
+        rivalries' <- loadAll (rivalries "html")
+        let indexCtx = listField "rivalries" defaultContext (return rivalries') `mappend` mconcat (zipWith (\str posts -> listField str defaultContext (return posts)) ranges' playerPages)
                        `mappend` constField "title" "Home" `mappend` defaultContext
         getResourceBody >>= applyAsTemplate indexCtx
           >>= loadAndApplyTemplate "templates/default.html" indexCtx

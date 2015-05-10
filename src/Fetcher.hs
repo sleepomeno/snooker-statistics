@@ -10,7 +10,6 @@ import           Control.Monad.Error          (ErrorT, runErrorT)
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Control.Monad.Trans          (lift)
 import           Control.Monad.Trans.Maybe
-import           Data.ConfigFile              as C
 import           Data.Either.Utils
 import           Data.Functor
 import           Data.IORef
@@ -21,7 +20,6 @@ import qualified Data.Text                    as T
 import qualified Data.Text.Lazy               as TL
 import           Data.Time
 import           Data.Time.Format
-import           Paths
 import           Prelude                      hiding (log)
 import           System.FilePath
 import           System.IO.Unsafe             (unsafePerformIO)
@@ -42,30 +40,6 @@ import           Control.Monad.Trans.Resource (runResourceT)
 import           Database.Persist
 import           Database.Persist.Sqlite
 
-
---------------------------------
--------- Configuration ---------
---------------------------------
-data Config = Conf { loginUser :: T.Text
-                   , loginPwd  :: T.Text
-                   , players   :: [T.Text]
-                   } deriving (Show, Read)
-
-readConfig :: IO Config
-readConfig = do
-  dataDir <- getStaticDir
-  let configFile = dataDir </> "config.txt"
-      readProp p  = C.get p "DEFAULT"
-
-  eitherConfig <- runErrorT $ do
-    parser <- join $ liftIO $ readfile emptyCP configFile
-    user <- T.pack <$> readProp parser "loginuser"
-    pwd <- T.pack <$> readProp parser "loginpwd"
-    players <- (T.split (== ',') . T.pack) <$> readProp parser "users"
-    return (user, pwd, players)
-
-  let (user, pwd, players) = forceEither eitherConfig
-  return $ Conf user pwd players
 
 -------------------------------------------------------------
 ------------- Login with username and password --------------
@@ -92,12 +66,12 @@ run session = runWD session
 main :: IO ()
 main = withDB $ do
 
-  dir <- liftIO getStaticDir
-  liftIO $ putStrLn $ "Write to dir " <> dir
+  -- dir <- liftIO getStaticDir
+  -- liftIO $ putStrLn $ "Write to dir " <> dir
   let conf = defaultCaps { browser = chrome }
-  Conf user pwd players <- liftIO readConfig
-
-  let stop = const False
+  conf'@(Conf user pwd players _ _ _ _) <- liftIO readConfig
+  liftIO $ putStrLn "Config:"
+  liftIO $ putStrLn . show $ conf'
 
   sess <- liftIO $ runWD defaultSession $ createSession conf
   let run' = run sess

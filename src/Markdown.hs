@@ -3,10 +3,11 @@
 module Main where
 
 import           Control.Monad
+import           Control.Monad.Reader
 import           Control.Monad.IO.Class        (MonadIO, liftIO)
-import           Data.Aeson hiding ((.=))
 import qualified Data.ByteString.Lazy.Char8    as BL
 import           Model
+import Data.List
 import           Prelude                       hiding (writeFile)
 
 import           Data.List                     (groupBy, nub)
@@ -14,13 +15,15 @@ import           Data.List                     (groupBy, nub)
 import           Control.Applicative           ((<$>))
 import           Control.Monad.Logger          (logDebugN, logErrorN, logInfoN,
                                                 logWarnN)
-import           Data.Monoid                   ((<>))
+import           Data.Monoid                   ((<>), mempty)
 import           Data.Time.Calendar            (toGregorian)
 import           Data.Time.Clock
 import           Database.Persist
 import           DatabaseUtil
 
 import           Data.Function                 (on)
+import           Data.Maybe
+
 
 import           Control.Applicative
 import           Control.Arrow                 (first)
@@ -34,7 +37,7 @@ import           Common
 -- import Text.Blaze.Html
 import           Text.Blaze.Html.Renderer.Text (renderHtml)
 import           Text.Blaze.Html5              as H hiding (head, map)
-import           Text.Blaze.Html5.Attributes   as A hiding (for, id, max)
+import           Text.Blaze.Html5.Attributes   as A hiding (for, id, max, min)
 
 import           Data.Monoid                   (mconcat)
 
@@ -50,6 +53,10 @@ import           Text.Printf
 import Graphics.Rendering.Chart.Easy
 import Graphics.Rendering.Chart.Backend.Cairo
 
+import Data.Time
+import Data.Time.Format
+import System.Locale
+
 
 breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
                                         matchMaxBreak1 match
@@ -61,15 +68,24 @@ rankingOf player match =  if (matchPlayer1 match == player) then
                           else
                             matchRanking2 match
 
+rankingDiffOf player match =  if (matchPlayer1 match == player) then
+                            matchDifference1 match
+                          else
+                            matchDifference2 match
+
 rankingF player = L.Fold (\rankings match -> (rankingOf player match) : rankings) ([] :: [Double]) id
 
 maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 id
 
 
-players = ["herbyger","osterdolfi", "p.hanpe", "_The_Rocket_" , "Momsen76" ]
-
 breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) id
 durationF = L.Fold (\ duration match -> duration + matchDuration match) (0 :: Int) id
+
+rankingDiffF player = L.Fold (\ diff match -> diff + rankingDiffOf player match) (0 :: Double) id
+
+lastRankingF player = L.Fold (\ ranking match -> Just $ case ranking of
+                                 Nothing -> rankingOf player match
+                                 Just x  -> x) (Nothing :: Maybe Double) fromJust
 
 data MatchStats = MatchStats {
     avgBreak      :: Float
@@ -78,6 +94,8 @@ data MatchStats = MatchStats {
   , numberWins    :: Int
   , durationAcc   :: Int
   , rankings      :: [Double]
+  , rankingDiff   :: Double
+  , lastRanking   :: Double
   , stepsResults  :: [Step]
     } deriving (Show, Read)
 
@@ -87,15 +105,22 @@ data Step = Step {
   , won     :: Int
 } deriving (Show, Read)
 
--- plotRanking caption player values = toFile def "example4_big.png" $ do
 rankingPlot caption player values = do
     layout_title .= caption
     plot (line player [(zipWith (\i value -> (i, LogValue value)) ([0..] :: [Int]) values)])
 
+encode :: Char -> String
+encode '_' = "-"
+encode c = [c]
+
+stat = H.div ! class_ "stat"
+right = (H.span ! class_ "right") . H.toHtml
+left = H.span ! class_ "left"
 
 breaksMarkdown player = do
-  let breaksDir = "/home/greg/haskell/snooker-statistics/hakyll-frontent/breaks" :: FilePath
-  let matchesWith opts = S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList opts [Desc MatchDate]
+  breaksDir <- T.unpack <$> asks outputDir
+  let matchesWith opts = filter rankingNotZero . S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList opts [Desc MatchDate]
+      rankingNotZero match = rankingOf player match /= 0
 
   let matchesWithBreak break = matchesWith $ [MatchPlayer1 ==. player, MatchMaxBreak1 >=. break] ||. [MatchPlayer2 ==. player, MatchMaxBreak2 >=. break]
 
@@ -112,28 +137,25 @@ breaksMarkdown player = do
                                                             (nr+1, if matchWinner match == player then won + 1 else won)
                                                            else
                                                             (nr, won)) (0,0) (\(nr, won) -> [Step break nr won])
-      statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> durationF <*> rankingF player <*> mconcat (map matchesWithBreak' steps)
+      statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> durationF <*> rankingF player <*> rankingDiffF player <*> lastRankingF player <*> mconcat (map matchesWithBreak' steps)
 
-      ranges = [10, 20, 30, 50, 100] :: [Int]
+      ranges = [10, 20, 30, 50, 100, maxBound] :: [Int]
       rangesStr :: [String]
       rangesStr = ["ten","twenty","thirty","fifty","hundred","all"]
       breaksOfLast :: Int -> L.Fold Match MatchStats
       breaksOfLast range = case statsFold of
-        L.Fold step begin done -> L.Fold (\ (nr, matchStats') match -> if nr < range then (nr+1, step matchStats' match) else (nr, matchStats')) (0,begin) (done . snd)
-      allFolds  = mconcat (map (fmap (:[]) . breaksOfLast) ranges ++ [(fmap (:[]) statsFold)])
-
-      -- matchStats :: MatchStats
-      -- matchStats = L.fold statsFold matchesOfPlayer
+        L.Fold step begin done -> L.Fold (\ (nr, matchStats') match -> if nr < range then
+                                                                         (nr+1, step matchStats' match)
+                                                                       else
+                                                                         (nr, matchStats'))
+                                  (0,begin) (done . snd)
+      allFolds  = mconcat $ map (fmap (:[]) . breaksOfLast) ranges
 
       results = L.fold allFolds matchesOfPlayer :: [MatchStats]
 
       identifier str = (str <> "-" <> concatMap encode (T.unpack player))
-      encode :: Char -> String
-      -- encode '_' = "%5F"
-      encode '_' = "-"
-      encode c = [c]
 
-  let matchStatsToOutput (rangeStr, matchStats) = do
+  let matchStatsToOutput (range, rangeStr, matchStats) = do
 
         let inPercent :: Int -> Int -> String
             inPercent n1 0 = "0"
@@ -144,6 +166,8 @@ breaksMarkdown player = do
             maxBreak :: String
             maxBreak = show . maxiBreak $ matchStats
             nrMatches = numberMatches matchStats
+            rankingDiff' = printf "%.2f\n" $ rankingDiff matchStats
+            lastRanking' = printf "%.2f\n" $ lastRanking matchStats
             steps' = stepsResults matchStats
             breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
             duration :: String
@@ -153,18 +177,17 @@ breaksMarkdown player = do
                            show' = printf "%02d"
                            in
                         show' mins <> ":" <> show' secs
-            plot = rankingPlot ("Ranking of " <> (T.unpack player)) (T.unpack player) (rankings matchStats)
+            plot = rankingPlot ("Ranking of last " <> show nrMatches <> " matches") (T.unpack player) (rankings matchStats)
                         
 
-        let header = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
-            stat = H.div ! class_ "stat"
-            right = (H.span ! class_ "right") . H.toHtml
-            left = H.span ! class_ "left"
+        let metadata = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
             averageOutput = stat $ left "Average Max: " >> right averageBreak
             nrMatchesInAccount = stat $ left "Matches: " >> right (show nrMatches)
             maximumBreak' = stat $ left "Max Break: " >> right maxBreak
             nrWins = stat $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
-            duration' = stat $ left "Average Dauer: " >> right duration
+            duration' = stat $ left "Average Duration: " >> right duration
+            rankingDiff'' = stat $ left "Ranking Difference: " >> right rankingDiff'
+            lastRanking'' = stat $ left "Ranking: " >> right lastRanking'
 
             rankingBox = renderHtml $ H.div ! class_ "rankingBox" $ do
               H.img ! src (H.stringValue $ identifier rangeStr <> ".png") 
@@ -175,7 +198,12 @@ breaksMarkdown player = do
                 duration'
                 maximumBreak'
                 averageOutput
-
+                lastRanking''
+                rankingDiff''
+        let maxMatchesShown = maxBound
+            nrShownMatches = min range maxMatchesShown
+        output <- matchesMarkdown . take range $ matchesOfPlayer 
+        let matchesBox = renderHtml $ H.div ! class_ "matchesBox" $ output
         let allBreaks = mconcat $ for breaks $ \(step, percent, absolute, won) -> do
                 H.tr $ do
                     H.td $ H.span (H.toHtml step)
@@ -190,63 +218,131 @@ breaksMarkdown player = do
                     H.th (H.span "Win %")
                 H.tbody $ allBreaks
 
-            output = LT.toStrict $ header <> infoBox <> breakTable <> rankingBox
+            output = LT.toStrict $ metadata <> infoBox <> breakTable <> rankingBox <> matchesBox
         return (rangeStr, output, plot)
 
-  results' <- mapM matchStatsToOutput (zip rangesStr results)
+  results' <- mapM matchStatsToOutput (zip3 ranges rangesStr results)
 
   forM results' $ \(str, output, plot) -> do
-    liftIO $ writeFile (breaksDir </> identifier str <> ".markdown") output
+    liftIO $ writeFile (breaksDir </> identifier str <> ".html") output
     liftIO $ toFile def (breaksDir </> identifier str <> ".png") plot
 
-lastMatchesFile :: IO String
-lastMatchesFile = do
-  dataDir <- getStaticDir
-  let configFile = dataDir </> "config.txt"
-      readProp p  = C.get p "DEFAULT"
-
-  eitherConfig <- runErrorT $ do
-    parser <- join $ liftIO $ readfile emptyCP configFile
-    file <- readProp parser "lastmatchesfile"
-    return file
-
-  let file = forceEither eitherConfig
-  return file
-
-lastMatchesMarkdown = do
-  matchesFile <- return "/home/greg/haskell/snooker-statistics/hakyll-frontent/lastMatches.markdown"
-  matches' <- selectList [] [Desc MatchDate]
-  let matches = take 50 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches'
-
+matchesMarkdown matches = do
   let matchesByDate :: [((Integer, Int, Int), [Match])]
       matchesByDate =  matches & map (\match -> (toGregorian $ utctDay $ matchDate match, match))
                    & groupBy ((==) `on` fst)  & map (first head . unzip)
 
-      header = "---\ntitle: Last matches\n---\n\n"
 
   let dayHTMLs = mconcat $ for matchesByDate $ \(date, matches) -> do
-        H.div ! class_ "matchesOfDay" $ dateHTML date <> (mconcat $ map matchHTML matches)
+        H.div ! class_ "matchesOfDay" $ dateHTML date <> (H.table ! class_ "matchesTable" $ (mconcat $ map matchHTML matches))
 
-      output = LT.toStrict $ header <> (renderHtml dayHTMLs)
+  return dayHTMLs
 
-  liftIO $ writeFile matchesFile output
-
-main :: IO ()
-main = withDB $ do
-  lastMatchesMarkdown
-  mapM_ breaksMarkdown players
+lastMatchesMarkdown = do 
+  matches' <- selectList [] [Desc MatchDate]
+  let matches = take 100 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches'
+      header = "---\ntitle: Last 100 matches\n---\n\n"
+  output <- matchesMarkdown matches
+  let result = LT.toStrict $ header <> renderHtml output
+  file <- asks lastMatchesFile
+  liftIO $ writeFile (T.unpack file) result
 
 dateHTML (year, month, day) = do
   let year' = H.toHtml year
   let month' = H.toHtml month
   let day' = H.toHtml day
 
-  H.div $ H.h2 $
+  H.div $ H.h3 $
     day' <> "." <> month' <> "." <> year'
 
 matchHTML (Match{..}) = do
-  let loser = if matchWinner == matchPlayer1 then matchPlayer2 else matchPlayer1
-      maxBreakWinner = T.pack . show $ if matchWinner == matchPlayer1 then matchMaxBreak1 else matchMaxBreak2
-      maxBreakLoser = T.pack . show $ if loser == matchPlayer1 then matchMaxBreak1 else matchMaxBreak2
-  H.div $
-    H.b (H.toHtml $ matchWinner <> " (" <> maxBreakWinner <> ")") <> H.span (H.toHtml $ " schlägt " <> (loser <> " (" <> maxBreakLoser <> ")"))
+  let show' :: (Num a, Show a) => a -> T.Text
+      show' = T.pack . show 
+      show'' = T.pack . show . round
+      markupPlayer player = if matchWinner == player then
+                              H.b . H.text $ player
+                            else
+                              H.text $ player
+      ply1Td = H.td ! class_ "player1"
+      ply2Td = H.td ! class_ "player2"
+  H.tr $
+    ((H.td ! class_ "matchDate") . H.text $ T.pack $ formatTime defaultTimeLocale "%H:%M" matchDate)  <>
+    (ply1Td . markupPlayer $ matchPlayer1 ) <>
+    (ply1Td . H.text $ show'' matchRanking1 ) <>
+    (ply1Td . H.i . H.text $ show' matchMaxBreak1 ) <>
+    (ply2Td . markupPlayer $ matchPlayer2) <>
+    (ply2Td . H.text $ show'' matchRanking2) <>
+    (ply2Td . H.i . H.text $ show' matchMaxBreak2 ) 
+
+rivalries' = do
+  users <- asks players
+  rivalUsers' <- asks rivalUsers
+  let allUsers = users ++ rivalUsers'
+  let duels = nub $ map sort [[pl1, pl2] | pl1 <- allUsers, pl2 <- allUsers, pl1 /= pl2]
+  mapM rivalry duels
+
+data Rivalry = Rivalry {
+    nrMatches :: Int
+  , numberWinsPl1    :: Int
+  , numberWinsPl2    :: Int
+  , diffsPl1   :: [Double]
+  , diffsPl2   :: [Double]
+  , diffPl1   :: Double
+  , diffPl2   :: Double
+    } deriving (Show, Read)
+
+round' f = ((/100) $ fromIntegral $ round (f * 100))
+diffsF player = L.Fold (\(diffs, current) match -> let new = current + (rankingDiffOf player match) in (new : diffs, new)) ([], 0) (fst)
+diffF player = L.Fold (\ diff match -> diff + (rankingDiffOf player match)) (0 :: Double) id
+winsF player = L.Fold (\ nr match -> if matchWinner match == player then nr + 1 else nr) 0 id
+
+encodeName player = concatMap encode (T.unpack player)
+
+rivalry [pl1, pl2] = do
+  rivalries'' <- T.unpack <$> asks rivalries
+  matches <- S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList ([MatchPlayer1 ==. pl1, MatchPlayer2 ==. pl2] ||. [MatchPlayer1 ==. pl2, MatchPlayer2 ==. pl1]) [Asc MatchDate]
+  let rivalF = Rivalry <$> L.genericLength <*> winsF pl1 <*> winsF pl2 <*> diffsF pl1 <*> diffsF pl2 <*> diffF pl1 <*> diffF pl2
+      Rivalry{..} = L.fold rivalF $ matches
+      plot = duelPlot pl1 diffsPl1 pl2 diffsPl2
+      
+      filename = encodeName pl1 <> "-vs-" <> encodeName pl2
+
+  let metadata = "---\ntitle: " <> (LT.pack $ T.unpack pl1) <> " vs " <> (LT.pack $ T.unpack pl2) <> "\n---\n\n"
+      plBox (player,numberWins,diff) = H.div ! class_ "playerBox" $ do
+        H.h3 . H.text $ player
+        H.div ! class_ "playerWins" $ stat $ left "Wins: " >> right (show numberWins)
+        H.div ! class_ "playerDiff" $ stat $ left "Ranking: " >> right (printf "%.2f\n" diff)
+      playerBoxes = renderHtml $ mapM_ plBox [(pl1, numberWinsPl1, diffPl1), (pl2, numberWinsPl2, diffPl2)]
+
+      rankingBox = renderHtml $ H.div ! class_ "rankingBox" $ do
+        H.img ! src (H.stringValue $ filename <> ".png") 
+
+  matchesOutput <- matchesMarkdown (reverse matches)
+
+  let matchesBox = renderHtml $ H.div ! class_ "matchesBox" $ matchesOutput
+      output = LT.toStrict $ metadata <> playerBoxes <> rankingBox <> matchesBox
+
+  unless (length matches == 0) $ do 
+    liftIO $ toFile def (rivalries'' </> filename <> ".png") plot
+    liftIO $ writeFile (rivalries'' </> filename <> ".html") output
+
+duelPlot player1 values1 player2 values2 = do
+    layout_title .= "Ranking Differences"
+    plot (line (T.unpack player1) [dataOf values1])
+    plot (line (T.unpack player2) [dataOf values2])
+    where
+      dataOf values = zipWith (\i value -> (i, value)) ([0..] :: [Int]) $ reverse values
+
+main :: IO ()
+main = withDB $ void $ do
+  conf <- liftIO readConfig
+  flip runReaderT conf $ do
+    lastMatchesMarkdown
+    mapM_ breaksMarkdown (players conf)
+    rivalries'
+
+doRivalries :: IO ()
+doRivalries = withDB . void $ do
+  conf <- liftIO readConfig
+  flip runReaderT conf rivalries'
+  

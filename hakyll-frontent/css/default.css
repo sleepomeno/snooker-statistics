@@ -101,3 +101,39 @@ table.breaksTable td {
 .rankingBox {
     margin-top: 30px;
 }
+
+table.matchesTable td {
+    border-bottom: 1px #222 solid;
+}
+
+td.player1 {
+    padding-left: 10px;
+    background-color: #ddd;
+}
+
+td.matchDate, td.player2  {
+
+    background-color: #eaeaea;
+}
+
+td.player2 {
+    padding-left: 10px;
+}
+
+td.player1:nth-child(2) {
+    padding-left: 20px;
+}
+td.player2:nth-child(2) {
+    padding-left: 20px;
+}
+
+.playerBox .stat {
+    width: 80%;
+}
+
+.playerBox {
+    float: left;
+    min-width: 200px;
+    margin-bottom: 30px;
+
+}

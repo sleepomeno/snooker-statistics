@@ -1,6 +1,13 @@
 loginuser = testaccount12345
 loginpwd = gregor
 
-users = herbyger,osterdolfi,p.hanpe,_The_Rocket_,Momsen76
+users = whatsacue4,herbyger,osterdolfi,p.hanpe,_The_Rocket_,Momsen76
 
-lastmatchesfile = /home/greg/haskell/snooker-statistics/hakyll-frontent/lastMatches.markdown
+rivalusers = kris4411,SnookerWilli,Blacht,Ralf4762,Powermandy,carim,Snookeruwe
+
+outputdir = "/home/greg/haskell/snooker-statistics/hakyll-frontent/breaks"
+lastmatchesfile = "/home/greg/haskell/snooker-statistics/hakyll-frontent/lastMatches.markdown"
+
+rivalries = "/home/greg/haskell/snooker-statistics/hakyll-frontent/rivalries"
+
+

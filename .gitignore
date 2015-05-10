@@ -14,5 +14,8 @@ cabal.config
 /selenium-server-standalone-2.42.2.jar
 .*.swp
 hakyll-frontent/_cache
+hakyll-frontent/_site
+hakyll-frontent/lastMatches.markdown
 hakyll-frontent/breaks
+hakyll-frontent/rivalries
 logs

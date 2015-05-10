@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP#-}
+{-# LANGUAGE CPP #-}
 module Paths (getStaticDir) where
 
 import Control.Monad
@@ -10,8 +10,6 @@ import qualified Paths_snooker_statistics (getDataDir)
 
 getStaticDir :: IO FilePath
 getStaticDir = (</> "data") `liftM` Paths_snooker_statistics.getDataDir
-
-
 
 #else
 -- using GHCi
