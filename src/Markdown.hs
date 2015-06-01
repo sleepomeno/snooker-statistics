@@ -130,6 +130,7 @@ breaksMarkdown player = do
 
   matchesOfPlayer <- matchesWith ([MatchPlayer1 ==. player] ||. [MatchPlayer2 ==. player])
   let steps = [10, 20 .. 140] ++ [147]
+      sessionLimit = 60 * 30
 
   let averageBreak' = (/) <$> breakSum player <*> L.genericLength
       maxBreak' = maximumBreak player
@@ -143,24 +144,42 @@ breaksMarkdown player = do
                                                             (nr, won)) (0,0) (\(nr, won) -> [Step break nr won])
       statsFold = MatchStats <$> averageBreak' <*> maxBreak' <*> nrMatches' <*> nrWins' <*> durationF <*> rankingF player <*> rankingDiffF player <*> lastRankingF player <*> mconcat (map matchesWithBreak' steps)
 
-      ranges = [10, 20, 30, 50, 100, maxBound] :: [Int]
+      ranges = [10, 50, 100, maxBound] :: [Int]
       rangesStr :: [String]
-      rangesStr = ["ten","twenty","thirty","fifty","hundred","all"]
-      breaksOfLast :: Int -> L.Fold Match MatchStats
+      rangesStr = ["Last 10 Matches","Last 50 Matches","Last 100 Matches","All Matches", "Last Session", "Last 3 days"]
+      breaksOfLast :: Int -> L.Fold Match (Int, MatchStats)
       breaksOfLast range = case statsFold of
         L.Fold step begin done -> L.Fold (\ (nr, matchStats') match -> if nr < range then
                                                                          (nr+1, step matchStats' match)
                                                                        else
                                                                          (nr, matchStats'))
-                                  (0,begin) (done . snd)
-      allFolds  = mconcat $ map (fmap (:[]) . breaksOfLast) ranges
+                                  (0,begin) (\(_, m) -> (range, done m))
+      lastSession = case statsFold of
+        L.Fold step begin done -> L.Fold (\ (time, !nr, matchStats') match ->
+                                           let time' = matchDate match
+                                              in
+                                            (Just time', nr+1, step matchStats' match) `fromMaybe` (do
+                                                timeJ <- time
+                                                guard $ timeJ `diffUTCTime` time' >= sessionLimit 
+                                                return (time, nr, matchStats'))) (Nothing, 0, begin) (\(t, n, m) -> (n, done m))
+      lastDays days = case statsFold of
+        L.Fold step begin done -> L.Fold (\ (time, !nr, matchStats') match ->
+                                           let time' = matchDate match
+                                               next = time `mplus` (Just time')
+                                               in
+                                            (next, nr+1, step matchStats' match) `fromMaybe` (do
+                                                timeJ <- next
+                                                guard $ (timeJ `diffUTCTime` time') >= (days * 60*60*24)
+                                                return (next, nr, matchStats'))) (Nothing, 0, begin) (\(t, n, m) -> (n, done m))
+                                           
+      allFolds  = mconcat $ (map (fmap (:[]) . breaksOfLast) ranges) ++ [fmap (:[]) lastSession] ++ [fmap (:[]) $ lastDays 3]
 
-      results = L.fold allFolds matchesOfPlayer :: [MatchStats]
+      results = L.fold allFolds matchesOfPlayer :: [(Int, MatchStats)]
 
       playerEncoded = concatMap encode . T.unpack $ player
       identifier str = str <> "-" <> playerEncoded
 
-  let matchStatsToOutput (range, rangeStr, matchStats) = do
+  let matchStatsToOutput (rangeStr, (range, matchStats)) = do
 
         let inPercent :: Int -> Int -> String
             inPercent n1 0 = "0"
@@ -208,7 +227,8 @@ breaksMarkdown player = do
                 rankingDiff''
         let maxMatchesShown = maxBound
             nrShownMatches = min range maxMatchesShown
-        output <- matchesMarkdown . take range $ matchesOfPlayer 
+            matchesOfPlayerInRange = take range matchesOfPlayer
+        output <- matchesMarkdown matchesOfPlayerInRange
         let matchesBox = renderHtml $ H.div ! class_ "matchesBox" $ output
         let allBreaks = mconcat $ for breaks $ \(step, percent, absolute, won) -> do
                 H.tr $ do
@@ -227,13 +247,13 @@ breaksMarkdown player = do
             output = LT.toStrict $ metadata <> infoBox <> breakTable <> rankingBox <> matchesBox
 
         let breakStats' = for breaks $ \(m,p,a,w) -> BreakStat (show m) p (show a) w
-            playerBreakStat = PlayerBreakStat rangeStr range winPerc duration maxBreak averageBreak lastRanking' rankingDiff'  breakStats' 
+            playerBreakStat = PlayerBreakStat rangeStr (min range $ length matchesOfPlayerInRange)  winPerc duration maxBreak averageBreak lastRanking' rankingDiff'  breakStats' 
         -- lift $ BL.writeFile (breaksDir </> identifier rangeStr <> ".json") playerBreakStat
                                                                                                                   
         
         return (rangeStr, output, plot, playerBreakStat)
 
-  results' <- mapM matchStatsToOutput (zip3 ranges rangesStr results)
+  results' <- mapM matchStatsToOutput (zip rangesStr results)
 
   let statsJsons = map (\(str, _, _, pBS) -> pBS) results'
       statJson = A.encode $ statsJsons
@@ -245,7 +265,9 @@ breaksMarkdown player = do
   
   let metadata = T.pack $ "---\ntitle: " <> playerEncoded <> "\n---\n\n"
       wrapperBox = LT.toStrict $ renderHtml $ H.div ! A.id "wrapper" $ do
-        H.script $ H.text $ "var statistics = " <> (TE.decodeUtf8 . BL.toStrict $ statJson) <> ";"
+        H.script $ H.text $ "var statistics = " <> (TE.decodeUtf8 . BL.toStrict $ statJson) <> ";\n"
+                         <> "var matchesOfPlayer = " <> (TE.decodeUtf8 . BL.toStrict $ matchesJson) <> ";\n"
+                         <> "var playerName = '" <> T.pack playerEncoded  <> "';"
         H.script ! src "../js/player.js" $ mempty
 
   
