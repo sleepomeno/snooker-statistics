@@ -2,6 +2,9 @@
 
 module Main where
 
+import qualified Data.Aeson as A
+
+import qualified Data.Map as M
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.IO.Class        (MonadIO, liftIO)
@@ -30,6 +33,7 @@ import           Control.Arrow                 (first)
 
 import qualified Control.Foldl                 as L
 import qualified Data.Text                     as T
+import qualified Data.Text.Encoding                     as TE
 import qualified Data.Text.Lazy                as LT
 
 import           Common
@@ -37,7 +41,7 @@ import           Common
 -- import Text.Blaze.Html
 import           Text.Blaze.Html.Renderer.Text (renderHtml)
 import           Text.Blaze.Html5              as H hiding (head, map)
-import           Text.Blaze.Html5.Attributes   as A hiding (for, id, max, min)
+import           Text.Blaze.Html5.Attributes   as A hiding (for, max, min)
 
 import           Data.Monoid                   (mconcat)
 
@@ -73,15 +77,15 @@ rankingDiffOf player match =  if (matchPlayer1 match == player) then
                           else
                             matchDifference2 match
 
-rankingF player = L.Fold (\rankings match -> (rankingOf player match) : rankings) ([] :: [Double]) id
+rankingF player = L.Fold (\rankings match -> (rankingOf player match) : rankings) ([] :: [Double]) Prelude.id
 
-maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 id
+maximumBreak player = L.Fold (\ !break match -> max break (breakOf player match)) 0 Prelude.id
 
 
-breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) id
-durationF = L.Fold (\ duration match -> duration + matchDuration match) (0 :: Int) id
+breakSum player = L.Fold (\ !break match -> break + (breakOf player match)) (0 :: Float) Prelude.id
+durationF = L.Fold (\ duration match -> duration + matchDuration match) (0 :: Int) Prelude.id
 
-rankingDiffF player = L.Fold (\ diff match -> diff + rankingDiffOf player match) (0 :: Double) id
+rankingDiffF player = L.Fold (\ diff match -> diff + rankingDiffOf player match) (0 :: Double) Prelude.id
 
 lastRankingF player = L.Fold (\ ranking match -> Just $ case ranking of
                                  Nothing -> rankingOf player match
@@ -131,7 +135,7 @@ breaksMarkdown player = do
       maxBreak' = maximumBreak player
       nrMatches' = L.genericLength
 
-      nrWins' = L.Fold (\ !nr match -> if matchWinner match == player then nr +1 else nr) 0 id
+      nrWins' = L.Fold (\ !nr match -> if matchWinner match == player then nr +1 else nr) 0 Prelude.id
 
       matchesWithBreak' break = L.Fold (\(! nr, !won) match -> if (breakOf player match >= break) then
                                                             (nr+1, if matchWinner match == player then won + 1 else won)
@@ -153,7 +157,8 @@ breaksMarkdown player = do
 
       results = L.fold allFolds matchesOfPlayer :: [MatchStats]
 
-      identifier str = (str <> "-" <> concatMap encode (T.unpack player))
+      playerEncoded = concatMap encode . T.unpack $ player
+      identifier str = str <> "-" <> playerEncoded
 
   let matchStatsToOutput (range, rangeStr, matchStats) = do
 
@@ -169,7 +174,7 @@ breaksMarkdown player = do
             rankingDiff' = printf "%.2f\n" $ rankingDiff matchStats
             lastRanking' = printf "%.2f\n" $ lastRanking matchStats
             steps' = stepsResults matchStats
-            breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h)
+            breaks = for steps' $ \(Step s h w) -> (s, inPercent h nrMatches, h, inPercent w h) 
             duration :: String
             duration = let avgDuration :: Int
                            avgDuration = round (((fromIntegral $ durationAcc matchStats) / (fromIntegral nrMatches)) :: Double)
@@ -177,14 +182,15 @@ breaksMarkdown player = do
                            show' = printf "%02d"
                            in
                         show' mins <> ":" <> show' secs
-            plot = rankingPlot ("Ranking of last " <> show nrMatches <> " matches") (T.unpack player) (rankings matchStats)
+            plot = rankingPlot ("Ranking of last " <> show nrMatches <> " matches") playerEncoded (rankings matchStats)
                         
 
-        let metadata = "---\ntitle: " <> (LT.pack $ T.unpack player) <> "\n---\n\n"
+        let metadata = "---\ntitle: " <> (LT.pack $ playerEncoded) <> "\n---\n\n"
             averageOutput = stat $ left "Average Max: " >> right averageBreak
             nrMatchesInAccount = stat $ left "Matches: " >> right (show nrMatches)
             maximumBreak' = stat $ left "Max Break: " >> right maxBreak
-            nrWins = stat $ left "Win %: " >> right (inPercent (numberWins matchStats) nrMatches)
+            winPerc = inPercent (numberWins matchStats) nrMatches
+            nrWins = stat $ left "Win %: " >> right winPerc
             duration' = stat $ left "Average Duration: " >> right duration
             rankingDiff'' = stat $ left "Ranking Difference: " >> right rankingDiff'
             lastRanking'' = stat $ left "Ranking: " >> right lastRanking'
@@ -219,11 +225,34 @@ breaksMarkdown player = do
                 H.tbody $ allBreaks
 
             output = LT.toStrict $ metadata <> infoBox <> breakTable <> rankingBox <> matchesBox
-        return (rangeStr, output, plot)
+
+        let breakStats' = for breaks $ \(m,p,a,w) -> BreakStat (show m) p (show a) w
+            playerBreakStat = PlayerBreakStat rangeStr range winPerc duration maxBreak averageBreak lastRanking' rankingDiff'  breakStats' 
+        -- lift $ BL.writeFile (breaksDir </> identifier rangeStr <> ".json") playerBreakStat
+                                                                                                                  
+        
+        return (rangeStr, output, plot, playerBreakStat)
 
   results' <- mapM matchStatsToOutput (zip3 ranges rangesStr results)
 
-  forM results' $ \(str, output, plot) -> do
+  let statsJsons = map (\(str, _, _, pBS) -> pBS) results'
+      statJson = A.encode $ statsJsons
+      matchesJson = A.encode $ matchesOfPlayer
+
+  -- liftIO $ BL.writeFile (breaksDir </> (playerEncoded <> ".stats.json")) statJson
+  -- liftIO $ BL.writeFile (breaksDir </> (playerEncoded <> ".matches.json")) matchesJson
+
+  
+  let metadata = T.pack $ "---\ntitle: " <> playerEncoded <> "\n---\n\n"
+      wrapperBox = LT.toStrict $ renderHtml $ H.div ! A.id "wrapper" $ do
+        H.script $ H.text $ "var statistics = " <> (TE.decodeUtf8 . BL.toStrict $ statJson) <> ";"
+        H.script ! src "../js/player.js" $ mempty
+
+  
+  liftIO $ writeFile (breaksDir </> ("player-" <> playerEncoded <> ".html")) (metadata <> wrapperBox)
+
+  forM results' $ \(str, output, plot, _) -> do
+    -- liftIO $ BL.writeFile (breaksDir </> identifier str <> ".json") playerBreakStat
     liftIO $ writeFile (breaksDir </> identifier str <> ".html") output
     liftIO $ toFile def (breaksDir </> identifier str <> ".png") plot
 
@@ -293,8 +322,8 @@ data Rivalry = Rivalry {
 
 round' f = ((/100) $ fromIntegral $ round (f * 100))
 diffsF player = L.Fold (\(diffs, current) match -> let new = current + (rankingDiffOf player match) in (new : diffs, new)) ([], 0) (fst)
-diffF player = L.Fold (\ diff match -> diff + (rankingDiffOf player match)) (0 :: Double) id
-winsF player = L.Fold (\ nr match -> if matchWinner match == player then nr + 1 else nr) 0 id
+diffF player = L.Fold (\ diff match -> diff + (rankingDiffOf player match)) (0 :: Double) Prelude.id
+winsF player = L.Fold (\ nr match -> if matchWinner match == player then nr + 1 else nr) 0 Prelude.id
 
 encodeName player = concatMap encode (T.unpack player)
 

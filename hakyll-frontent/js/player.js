@@ -1,0 +1,1 @@
+/home/greg/haskell/snooker-statistics/frontend-new/dist/index.js

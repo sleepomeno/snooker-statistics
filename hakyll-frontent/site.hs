@@ -11,6 +11,9 @@ main = hakyll $ do
     match "images/*" $ do
         route   idRoute
         compile copyFileCompiler
+    match "js/*" $ do
+        route   idRoute
+        compile copyFileCompiler
 
     match "css/*" $ do
         route   idRoute
@@ -29,7 +32,8 @@ main = hakyll $ do
       route idRoute
       compile copyFileCompiler
 
-    flip mapM (ranges "html") $ \url -> match url showPlayer
+    -- flip mapM (ranges "html") $ \url -> match url showPlayer
+    match "breaks/*.html" showPlayer
 
     flip mapM (ranges "png") $ \url -> match url $ do
       route idRoute

@@ -19,3 +19,8 @@ hakyll-frontent/lastMatches.markdown
 hakyll-frontent/breaks
 hakyll-frontent/rivalries
 logs
+bower_components
+node_modules
+.psci_modules
+frontend-new/output
+frontend-new/tmp

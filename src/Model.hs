@@ -51,3 +51,26 @@ instance Ord Match where
   compare m1 m2 = if (m1 == m2 || m1 == switched m2) then EQ else GT
    where
     switched m@(Match{..}) = m { matchPlayer1 = matchPlayer2, matchPlayer2 = matchPlayer1, matchMaxBreak1 = matchMaxBreak2, matchMaxBreak2 = matchMaxBreak1, matchRanking1 = matchRanking2, matchRanking2 = matchRanking1, matchDifference1 = matchDifference2, matchDifference2 = matchDifference1}
+
+data BreakStat = BreakStat {
+    minimum :: String
+  , percent :: String
+  , absolute :: String
+  , wPercentage :: String
+} deriving (Eq)
+
+$(deriveJSON defaultOptions ''BreakStat)
+
+data PlayerBreakStat = PlayerBreakStat {
+    label   :: String
+  , matches :: Int
+  , winPercentage :: String
+  , avgDuration :: String
+  , maxBreak :: String
+  , avgMax :: String
+  , ranking :: String
+  , rankDiff :: String
+  , breakStats :: [BreakStat]
+} deriving (Eq)
+    
+$(deriveJSON defaultOptions ''PlayerBreakStat)

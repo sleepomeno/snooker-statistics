@@ -1,0 +1,21 @@
+{
+  "name": "snooker-statistics-player",
+  "version": "0.0.0",
+  "homepage": "https://github.com/sleepomeno/snooker-statistics",
+  "authors": [
+    "Gregor Riegler <gregor.riegler@gmail.com>"
+  ],
+  "license": "MIT",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+	"dependencies" : {
+ "purescript-halogen": "master",
+ "purescript-halogen-bootstrap":"master"
+	}
+}
