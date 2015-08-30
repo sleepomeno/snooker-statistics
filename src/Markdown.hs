@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, OverloadedStrings, RecordWildCards, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, BangPatterns, OverloadedStrings, RecordWildCards, TupleSections #-}
 
 module Main where
 
@@ -40,7 +40,7 @@ import           Common
 
 -- import Text.Blaze.Html
 import           Text.Blaze.Html.Renderer.Text (renderHtml)
-import           Text.Blaze.Html5              as H hiding (head, map)
+import           Text.Blaze.Html5              as H hiding (head, map, main)
 import           Text.Blaze.Html5.Attributes   as A hiding (for, max, min)
 
 import           Data.Monoid                   (mconcat)
@@ -59,7 +59,7 @@ import Graphics.Rendering.Chart.Backend.Cairo
 
 import Data.Time
 import Data.Time.Format
-import System.Locale
+-- import System.Locale
 
 
 breakOf player match = fromIntegral $ if (matchPlayer1 match == player) then
@@ -123,14 +123,14 @@ left = H.span ! class_ "left"
 
 breaksMarkdown player = do
   breaksDir <- T.unpack <$> asks outputDir
-  let matchesWith opts = filter rankingNotZero . S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList opts [Desc MatchDate]
+  let matchesWith opts = filter rankingNotZero . S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  (lift $ selectList opts [Desc MatchDate])
       rankingNotZero match = rankingOf player match /= 0
 
   let matchesWithBreak break = matchesWith $ [MatchPlayer1 ==. player, MatchMaxBreak1 >=. break] ||. [MatchPlayer2 ==. player, MatchMaxBreak2 >=. break]
 
   matchesOfPlayer <- matchesWith ([MatchPlayer1 ==. player] ||. [MatchPlayer2 ==. player])
   let steps = [10, 20 .. 140] ++ [147]
-      sessionLimit = 60 * 30
+      sessionLimit = 4200
 
   let averageBreak' = (/) <$> breakSum player <*> L.genericLength
       maxBreak' = maximumBreak player
@@ -290,7 +290,7 @@ matchesMarkdown matches = do
   return dayHTMLs
 
 lastMatchesMarkdown = do 
-  matches' <- selectList [] [Desc MatchDate]
+  matches' <- lift $ selectList [] [Desc MatchDate]
   let matches = take 100 . S.toList . S.fromList $ map (\(Entity matchId match) -> match) matches'
       header = "---\ntitle: Last 100 matches\n---\n\n"
   output <- matchesMarkdown matches
@@ -351,7 +351,7 @@ encodeName player = concatMap encode (T.unpack player)
 
 rivalry [pl1, pl2] = do
   rivalries'' <- T.unpack <$> asks rivalries
-  matches <- S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  selectList ([MatchPlayer1 ==. pl1, MatchPlayer2 ==. pl2] ||. [MatchPlayer1 ==. pl2, MatchPlayer2 ==. pl1]) [Asc MatchDate]
+  matches <- S.toList . S.fromList . map (\(Entity _ match) -> match) <$>  (lift $ selectList ([MatchPlayer1 ==. pl1, MatchPlayer2 ==. pl2] ||. [MatchPlayer1 ==. pl2, MatchPlayer2 ==. pl1]) [Asc MatchDate])
   let rivalF = Rivalry <$> L.genericLength <*> winsF pl1 <*> winsF pl2 <*> diffsF pl1 <*> diffsF pl2 <*> diffF pl1 <*> diffF pl2
       Rivalry{..} = L.fold rivalF $ matches
       plot = duelPlot pl1 diffsPl1 pl2 diffsPl2

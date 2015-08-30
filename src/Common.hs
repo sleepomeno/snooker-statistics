@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE FlexibleContexts, TemplateHaskell            #-}
 
 module Common where 
 
@@ -31,6 +31,7 @@ deriveJSON defaultOptions ''BS
 
 for = flip map
 
+lengthT :: [a] -> T.Text
 lengthT = T.pack . show . length
 
 --------------------------------

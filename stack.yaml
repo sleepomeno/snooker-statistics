@@ -1,0 +1,7 @@
+flags:
+  snooker-statistics:
+    build: false
+packages:
+- '.'
+extra-deps: []
+resolver: lts-3.2

@@ -12,8 +12,8 @@ import           Data.Either.Combinators
 import Control.Applicative ((<*),(*>))
 import           Data.Text.Internal
 import           Data.Time
-import           Data.Time.Format
-import           System.Locale (defaultTimeLocale)
+import           Data.Time.Format 
+-- import           System.Locale (defaultTimeLocale)
 import           Text.Parsec
 import           Text.Parsec.Token
 import qualified Data.Text as T

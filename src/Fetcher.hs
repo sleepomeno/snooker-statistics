@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
 module Main where
 
@@ -24,7 +24,7 @@ import           Prelude                      hiding (log)
 import           System.FilePath
 import           System.IO.Unsafe             (unsafePerformIO)
 import           Test.WebDriver
-import           Test.WebDriver.Classes       (getSession)
+import           Test.WebDriver.Session
 import qualified Text.XML                     as X
 import           Text.XML.Cursor              hiding (element)
 
@@ -52,8 +52,8 @@ loginGamedesire user pwd = do
     loginBtn  <- findElemByClass "login-button"
     click loginBtn
     liftIO $ threadDelay 3500
-    findElem $ ById "overlay_login_box"
-    name      <- findElemById"userLogin"
+    findElem $ ById "cboxLoadedContent"
+    name      <- findElemById "userLogin"
     password  <- findElemById "user_passwd"
     loginForm <- findElemById "loginForm"
     sendKeys user name
@@ -68,13 +68,18 @@ main = withDB $ do
 
   -- dir <- liftIO getStaticDir
   -- liftIO $ putStrLn $ "Write to dir " <> dir
-  let conf = defaultCaps { browser = chrome }
+-- ["intl.accept_languages=de-DE","--lang=de", "--user-data-dir=/home/greg/.config/google-chrome/Default", "user-data-dir=/home/greg/.config/google-chrome/Default","--lang=de-DE","lang=de-DE","accept_languages=de-DE"]
+  let conf = defaultCaps { browser = chrome { chromeOptions = [], chromeDriverVersion = Just "2.18", chromeBinary = Just "/usr/bin/google-chrome" } }
   conf'@(Conf user pwd players _ _ _ _) <- liftIO readConfig
   liftIO $ putStrLn "Config:"
   liftIO $ putStrLn . show $ conf'
 
-  sess <- liftIO $ runWD defaultSession $ createSession conf
+  -- sess <- liftIO $ runWD defaultSession $ createSession conf
+  -- sess <- liftIO $ runSession (defaultConfig { wdCapabilities = conf }) $ createSession [] conf
+  sess <- liftIO $ runSession (defaultConfig { wdCapabilities = conf, wdRequestHeaders = [("Accept-Language","de-DE,de;q=0.8,en;q=0.6,en-US;q=0.4")] }) $ getSession
+
   let run' = run sess
+  -- let run' = runSession (defaultConfig { wdCapabilities = conf }) . withSession sess
 
   -- runSession defaultSession conf $ loginGamedesire user pwd >> resultsSource >>= writeToFile
   let init = liftIO $ run' $ do
@@ -85,7 +90,14 @@ main = withDB $ do
         doc <- getDocument source
         return . getResultLines $ doc
 
+
   init
+  liftIO $ run' $ setCookie $ mkCookie "uid_lng" "3"
+
+  let (Just req) = lastHTTPRequest sess
+
+  liftIO $ putStrLn "Request:"
+  liftIO $ print req
 
   forM_ players $ \player -> do
       -- Get matches of player
@@ -96,8 +108,10 @@ main = withDB $ do
 
 
       matchesOfPlayer <- (`runContT` return) $ callCC $ \ret -> do
+
+          -- let getResults :: [Match] -> T.Text -> ContT [Match] (ReaderT SqlBackend (LoggingT (ResourceT IO))) [Match]
           let getResults matches url = do
-                  results <- fetchResults (T.unpack url)
+                  results <- lift $ fetchResults (T.unpack url)
                   logInfoN $ "Found " <> lengthT results <> " matches for " <> player <> " on " <> url
                   let isNew = fromMaybe (const True) isNew'
                           where
@@ -115,10 +129,10 @@ main = withDB $ do
                   -- forM results' $ \match -> do
                   --   insert match
                   --   logDebugN $ "Insert match for " <> player <> " played on " <> T.pack (show $ matchDate match) <> " with winner " <> (matchWinner match)
-                  insertMany results'
+                  lift $ insertMany results'
 
                   when (null results') $ do
-                      ret matches
+                    ret matches
 
                   return (matches ++ results')
 
@@ -129,10 +143,10 @@ main = withDB $ do
         newestMatch <- hoistMaybe $ headMay matchesOfPlayer
         case maybeLastMatch of
           Just (Entity eId eVal) -> do
-            update eId [LastMatchDate =. (matchDate newestMatch)]
+            lift $ update eId [LastMatchDate =. (matchDate newestMatch)]
             logInfoN $ "Update last match of " <> player <> " to date " <> T.pack (show $ matchDate newestMatch)
           Nothing -> do
-            insert $ LastMatch player (matchDate newestMatch)
+            lift $ insert $ LastMatch player (matchDate newestMatch)
             logInfoN $ "Insert last match of " <> player <> " to date " <> T.pack (show $ matchDate newestMatch)
 
   -- close the session
@@ -180,22 +194,22 @@ waitFor = liftIO . threadDelay
 
 -- Top-Level mutable state like in https://www.haskell.org/haskellwiki/Top_level_mutable_state
 -- You need a very good reason to do that
-globalSession :: IORef WDSession
-{-# NOINLINE globalSession #-}
-globalSession = unsafePerformIO (newIORef defaultSession)
+-- globalSession :: IORef WDSession
+-- {-# NOINLINE globalSession #-}
+-- globalSession = unsafePerformIO (newIORef defaultSession)
 
--- |Creates a new browser session and puts it into the global variable globalSession
---  This is intended for interactive use only.
-initGlobalSession = runWD defaultSession $
-                      newSession >>=
-                    \x -> liftIO $ writeIORef globalSession x
-    where
-      newSession :: WD WDSession
-      newSession = createSession $ defaultCaps { browser = chrome }
+-- -- |Creates a new browser session and puts it into the global variable globalSession
+-- --  This is intended for interactive use only.
+-- initGlobalSession = runWD defaultSession $
+--                       newSession >>=
+--                     \x -> liftIO $ writeIORef globalSession x
+--     where
+--       newSession :: WD WDSession
+--       newSession = createSession $ defaultCaps { browser = chrome }
 
 
--- |For use in interactive development to run the webdriver action with the global session
-runGlobal action = readIORef globalSession >>= \session -> runWD session action
+-- -- |For use in interactive development to run the webdriver action with the global session
+-- runGlobal action = readIORef globalSession >>= \session -> runWD session action
 
 
 -----------------------
@@ -222,7 +236,7 @@ login = loginGamedesire (T.pack "testaccount12345") (T.pack "gregor") >> waitFor
 toResults = openPage resultsURL >> waitFor 5500000
 
 
-initResults = initGlobalSession >> (runGlobal $ login >> toResults >> saveDoc)
+-- initResults = initGlobalSession >> (runGlobal $ login >> toResults >> saveDoc)
 
 --- :set -XOverloadedStrings
 --- initResults
