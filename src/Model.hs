@@ -71,6 +71,8 @@ data PlayerBreakStat = PlayerBreakStat {
   , ranking :: String
   , rankDiff :: String
   , breakStats :: [BreakStat]
+  , bestRun :: String
+  , worstRun :: String
 } deriving (Eq)
     
 $(deriveJSON defaultOptions ''PlayerBreakStat)
