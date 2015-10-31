@@ -6,7 +6,8 @@ import           Control.Concurrent           (threadDelay)
 import           Control.Error
 import           Control.Monad                (join, liftM, void, (>=>))
 import           Control.Monad.Cont
-import           Control.Monad.Error          (ErrorT, runErrorT)
+-- import           Control.Monad.Error          (ErrorT, runErrorT)
+import           Control.Monad.Except
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Control.Monad.Trans          (lift)
 import           Control.Monad.Trans.Maybe

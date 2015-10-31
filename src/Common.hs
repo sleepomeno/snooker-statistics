@@ -2,21 +2,13 @@
 
 module Common where 
 
-import           Data.Time
 import           Database.Persist.TH
 import           Paths
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import           System.FilePath
-import Database.Persist
 import           Data.ConfigFile              as C
-import Control.Applicative
-import Database.Persist.Sqlite
 import           Data.Either.Utils
-import           Control.Monad.Error          (ErrorT, runErrorT)
-import           Control.Monad                (join, liftM, void, (>=>))
-import           Control.Monad.IO.Class       (MonadIO, liftIO)
-import Control.Monad.Trans.Resource (runResourceT)
-import Control.Monad.Logger (runStdoutLoggingT, logDebugN, logInfoN, logWarnN, logErrorN)
+import           Control.Monad.Except
 import qualified Data.Text              as T
 
 
@@ -53,7 +45,7 @@ readConfig = do
   let configFile = dataDir </> "config.txt"
       readProp p  = C.get p "DEFAULT"
 
-  eitherConfig <- runErrorT $ do
+  eitherConfig <- runExceptT $ do
     parser <- join $ liftIO $ readfile emptyCP configFile
     user <- T.pack <$> readProp parser "loginuser"
     pwd <- T.pack <$> readProp parser "loginpwd"

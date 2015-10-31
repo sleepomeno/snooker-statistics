@@ -1,21 +1,14 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards          #-}
 
 module Parse where
 
 import           Common
-import           Control.Monad (join, liftM, void, (>=>))
 import           Control.Monad.Identity
 import           Data.String
-import           Data.Either.Combinators
-import Control.Applicative ((<*),(*>))
 import           Data.Text.Internal
 import           Data.Time
-import           Data.Time.Format 
--- import           System.Locale (defaultTimeLocale)
 import           Text.Parsec
-import           Text.Parsec.Token
 import qualified Data.Text as T
 import qualified Text.XML as X
 import qualified Text.XML.Cursor as C
@@ -23,7 +16,6 @@ import  Text.XML.Cursor  hiding (element)
 
 import Model
 
-import Debug.Trace
 
 
 -- |Returns all the games displayed 
@@ -36,9 +28,7 @@ parseHoverTable doc =  doc $// element "table" >=> classIs "hoverTable"
 
 -- |Applies parseResultLine to all rows of the hoverTable
 parseResultLines :: Cursor -> [Match]
-parseResultLines hoverTable = let trs = hoverTable $/ element "tbody" &/ element "tr"
-                                  -- tdCursors = map ($/ element "td") trs :: [[Cursor]]
-                                  tdCursors = hoverTable $/ element "tbody" &/ element "tr" &| child >=> element "td"
+parseResultLines hoverTable = let tdCursors = hoverTable $/ element "tbody" &/ element "tr" &| child >=> element "td"
                               in  map parseResultLine tdCursors
 
                                 
@@ -85,7 +75,7 @@ parseDifference td = if isUnranked td then
                      r2 = toRankingDouble r2Str
                      toRankingDouble str = let result = parse parseRankingDouble "parseRankingDouble" str
                                                in
-                                            (either (const (error "could not parse difference")) id result) -- TODO need error handling
+                                            either (const (error "could not parse difference")) id result -- TODO need error handling
                      parseRankingDouble :: ParsecT String () Identity Double
                      parseRankingDouble = do
                        anyChar >> anyChar
@@ -131,14 +121,13 @@ parseDuration td = either (const 0) id . parse parseDuration' "parseDuration" . 
                       return $ 60 * read minutes + read seconds
 
 parseDate :: Cursor -> UTCTime
-parseDate td = readTime defaultTimeLocale formatString dateString
+parseDate td = parseTimeOrError True defaultTimeLocale formatString dateString
   where
   dateString = concatMap show $ td $/ element "span" &/ content
   formatString = "\"%d.%m.%Y %H:%M:%S\""
 
 -- remove the first and last character
 unwrapText :: Text -> String
--- unwrapText  = read . show . T.reverse . T.drop 1 . T.reverse . T.drop 1
 unwrapText  = unwrapString . show
 
 unwrapString = reverse . drop 1 . reverse . drop 1

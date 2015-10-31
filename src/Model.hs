@@ -11,8 +11,6 @@
 {-# LANGUAGE RecordWildCards               #-}
 module Model where
 
-import           Database.Persist
-import           Database.Persist.Sqlite
 import           Database.Persist.TH
 import           Data.Time
 import Data.Aeson.TH (deriveJSON, defaultOptions)
@@ -48,7 +46,7 @@ LastMatch json
 |]
 
 instance Ord Match where
-  compare m1 m2 = if (m1 == m2 || m1 == switched m2) then EQ else GT
+  compare m1 m2 = if m1 == m2 || m1 == switched m2 then EQ else GT
    where
     switched m@(Match{..}) = m { matchPlayer1 = matchPlayer2, matchPlayer2 = matchPlayer1, matchMaxBreak1 = matchMaxBreak2, matchMaxBreak2 = matchMaxBreak1, matchRanking1 = matchRanking2, matchRanking2 = matchRanking1, matchDifference1 = matchDifference2, matchDifference2 = matchDifference1}
 
