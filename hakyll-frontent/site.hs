@@ -32,7 +32,6 @@ main = hakyll $ do
       route idRoute
       compile copyFileCompiler
 
-    -- flip mapM (ranges "html") $ \url -> match url showPlayer
     match "breaks/player-*.html" showPlayer
 
     match "breaks/*.png" $ do
@@ -50,39 +49,9 @@ main = hakyll $ do
         pandocCompiler
         playerPages <- loadAll "breaks/*.html"
         rivalries' <- loadAll (rivalries "html")
-        let indexCtx = listField "players" defaultContext (return playerPages) `mappend` listField "rivalries" defaultContext (return rivalries') -- `mappend` mconcat (zipWith (\str posts -> listField str defaultContext (return posts)) ranges' playerPages)
-        -- let indexCtx = listField "rivalries" defaultContext (return rivalries')
-                       `mappend` constField "title" "Home" `mappend` defaultContext
+        let indexCtx = listField "players" defaultContext (return playerPages) `mappend` listField "rivalries" defaultContext (return rivalries') `mappend` constField "title" "Home" `mappend` defaultContext
         getResourceBody >>= applyAsTemplate indexCtx
           >>= loadAndApplyTemplate "templates/default.html" indexCtx
           >>= relativizeUrls 
         
-    -- match "index.html" $ do
-    --     route $ constRoute "lastMatches.markdown"
-    --     compile $ do
-    --         posts <- recentFirst =<< loadAll "posts/*"
-    --         let indexCtx =
-    --                 listField "posts" postCtx (return posts) `mappend`
-    --                 constField "title" "Home"                `mappend`
-    --                 defaultContext
-
-    --         getResourceBody
-    --             >>= applyAsTemplate indexCtx
-    --             >>= loadAndApplyTemplate "templates/default.html" indexCtx
-    --             >>= relativizeUrls
-
     match "templates/*" $ compile templateCompiler
-
-
---------------------------------------------------------------------------------
-
--- withPosts = do
---     pandocCompiler
---     posts <- loadAll "breaks/*"
---     let indexCtx =
---             listField "posts" defaultContext (return posts) `mappend`
---             constField "title" "Home"                `mappend`
---             defaultContext
---     getResourceBody >>= applyAsTemplate indexCtx
---         >>= loadAndApplyTemplate "templates/default.html" indexCtx
---         >>= relativizeUrls 

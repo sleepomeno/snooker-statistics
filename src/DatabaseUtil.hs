@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, TypeFamilies, OverloadedStrings #-}
 
 module DatabaseUtil where
 

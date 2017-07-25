@@ -18,7 +18,7 @@ import Model
 
 
 
--- |Returns all the games displayed 
+-- |Returns all the games displayed
 getResultLines :: X.Document -> [Match]
 getResultLines = concatMap parseResultLines . parseHoverTable . fromDocument
 
@@ -31,7 +31,7 @@ parseResultLines :: Cursor -> [Match]
 parseResultLines hoverTable = let tdCursors = hoverTable $/ element "tbody" &/ element "tr" &| child >=> element "td"
                               in  map parseResultLine tdCursors
 
-                                
+
 -- |Calls the parsing functions for the specific column and puts the results together
 parseResultLine tds = Match {..}
   where
@@ -86,7 +86,7 @@ parseDifference td = if isUnranked td then
                          many digit
                        anyChar >> anyChar
                        return $ multiplier * (read (n1 ++ "." ++ n2) :: Double)
-                       
+
 
 parseRankings :: Cursor -> (Double, Double)
 parseRankings td =  if isUnranked td then
@@ -97,8 +97,8 @@ parseRankings td =  if isUnranked td then
                      ranking2 = read . unwrapText $ (!!1) $ td $// element "td" &/ content
 
 isUnranked td = (/= 2) . length $ td $// element "tr"
-                     
-                                  
+
+
 parseWinner :: Cursor -> T.Text
 parseWinner td = head $ td $/ element "b" &/ content
 
@@ -137,6 +137,4 @@ unwrapString = reverse . drop 1 . reverse . drop 1
 xhtml = "{http://www.w3.org/1999/xhtml}"
 element = C.element . fromString . (++) xhtml
 
-classIs = attributeIs "class" 
-
-
+classIs = attributeIs "class"

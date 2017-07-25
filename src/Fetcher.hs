@@ -49,14 +49,16 @@ import           Database.Persist.Sqlite
 loginGamedesire :: T.Text -> T.Text -> WD ()
 loginGamedesire user pwd = do
     openPage "http://www.gamedesire.com"
-    setImplicitWait 3000
+    setImplicitWait 9000
+    setScriptTimeout 9000
+    setPageLoadTimeout 9000
     loginBtn  <- findElemByClass "login-button"
     click loginBtn
     liftIO $ threadDelay 3500
     findElem $ ById "cboxLoadedContent"
     name      <- findElemById "userLogin"
-    password  <- findElemById "user_passwd"
-    loginForm <- findElemById "loginForm"
+    password  <- findElemById "account-password"
+    loginForm <- findElem . ByName $ "loginForm"
     sendKeys user name
     sendKeys pwd password
     submit loginForm
@@ -70,14 +72,16 @@ main = withDB $ do
   -- dir <- liftIO getStaticDir
   -- liftIO $ putStrLn $ "Write to dir " <> dir
 -- ["intl.accept_languages=de-DE","--lang=de", "--user-data-dir=/home/greg/.config/google-chrome/Default", "user-data-dir=/home/greg/.config/google-chrome/Default","--lang=de-DE","lang=de-DE","accept_languages=de-DE"]
-  let conf = defaultCaps { browser = chrome { chromeOptions = [], chromeDriverVersion = Just "2.18", chromeBinary = Just "/usr/bin/google-chrome" } }
-  conf'@(Conf user pwd players _ _ _ _) <- liftIO readConfig
+  let conf = defaultCaps { browser = chrome { chromeOptions = ["--user-data-dir=/tmp/webdriver"], chromeDriverVersion = Just "2.26", chromeBinary = Just "/usr/bin/google-chrome" } }
+  conf'@(Conf user pwd players _ _ _ _ _) <- liftIO readConfig
   liftIO $ putStrLn "Config:"
   liftIO $ putStrLn . show $ conf'
 
   -- sess <- liftIO $ runWD defaultSession $ createSession conf
   -- sess <- liftIO $ runSession (defaultConfig { wdCapabilities = conf }) $ createSession [] conf
   sess <- liftIO $ runSession (defaultConfig { wdCapabilities = conf, wdRequestHeaders = [("Accept-Language","de-DE,de;q=0.8,en;q=0.6,en-US;q=0.4")] }) $ getSession
+
+  liftIO $ putStrLn "after sess"
 
   let run' = run sess
   -- let run' = runSession (defaultConfig { wdCapabilities = conf }) . withSession sess
@@ -92,16 +96,26 @@ main = withDB $ do
         return . getResultLines $ doc
 
 
+  liftIO $ putStrLn "before init"
   init
-  liftIO $ run' $ setCookie $ mkCookie "uid_lng" "3"
+  liftIO $ putStrLn "after init"
+  liftIO $ run' $ waitFor 9500000
+  liftIO $ putStrLn "after waiting again"
+  -- liftIO $ run' $ setCookie $ mkCookie "gd-cookie-info" "1"
+  -- liftIO $ run' $ setCookie $ mkCookie "uid_lng" "3"
+  liftIO $ putStrLn "after setting cookie"
 
-  let (Just req) = lastHTTPRequest sess
-
-  liftIO $ putStrLn "Request:"
-  liftIO $ print req
+  -- let (Just req) = lastHTTPRequest sess
+  --
+  -- liftIO $ putStrLn "Request:"
+  -- liftIO $ print req
 
   forM_ players $ \player -> do
       -- Get matches of player
+
+      liftIO $ putStrLn $ "Fetching player..."
+      liftIO $ putStrLn $ T.unpack $ player
+    
       maybeLastMatch <- getBy $ UniquePlayer player
       case maybeLastMatch of
         Just (Entity _ match) -> logInfoN $ "Last match of " <> player <> " was on " <> T.pack (show $ lastMatchDate match)
@@ -154,7 +168,7 @@ main = withDB $ do
   -- liftIO $ runSession defaultSession conf $ finallyClose (return ())
   -- liftIO $ runWD sess $ finallyClose $ return ()
 
-  
+
 
 
 log t = liftIO $ putStrLn $ T.unpack $ t
@@ -173,7 +187,8 @@ resultsSource url = do
 resultsURL = "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=Momsen76&show=archive&gg=103"
 
 matchURLs :: T.Text -> [T.Text]
-matchURLs player = for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
+-- matchURLs player = for starts $ \start -> "http://www.gamedesire.com/#/?dd=16&n=2&sub=1&view=player_results&player=" `T.append` player `T.append` "&show=archive&gg=103&start=" `T.append` start
+matchURLs player = for starts $ \start -> "https://www.gamedesire.com/de/player/" `T.append` player `T.append` "/results/archive/103?start=" `T.append` start
 
 starts = map (T.pack . show) [0, 30 ..]
 

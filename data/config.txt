@@ -1,7 +1,9 @@
 loginuser = testaccount12345
 loginpwd = gregor
 
-users = whatsacue4,herbyger,osterdolfi,p.hanpe,_The_Rocket_,Momsen76
+users = _The_Rocket_,Momsen76,hanp.elmann,thatchman
+
+oldusers = whatsacue4,jochan.riegl,habakuk,dr.acuwoman,pensima,p.hanpe,M.A.T.,mamelle,Honomag,mallander,dukman
 
 rivalusers = kris4411,SnookerWilli,Blacht,Ralf4762,Powermandy,carim,(Neil_Robertson),mxxzy,vivisol1
 

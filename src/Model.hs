@@ -15,8 +15,7 @@ import           Database.Persist.TH
 import           Data.Time
 import Data.Aeson.TH (deriveJSON, defaultOptions)
 import Data.Text
-import Common
-
+import JSONCommon
 
 type Seconds = Int
 
@@ -72,5 +71,28 @@ data PlayerBreakStat = PlayerBreakStat {
   , bestRun :: String
   , worstRun :: String
 } deriving (Eq)
-    
+
 $(deriveJSON defaultOptions ''PlayerBreakStat)
+
+data MatchStats = MatchStats {
+    avgBreak      :: Float
+  , maxiBreak     :: Int
+  , numberMatches :: Int
+  , numberWins    :: Int
+  , durationAcc   :: Int
+  , rankings      :: [Double]
+  , rankingDiff   :: Double
+  , lastRanking   :: Double
+  , stepsResults  :: [Step]
+  , bestSeries    :: BestSeries
+  , worstSeries   :: WorstSeries
+    } deriving (Show, Read)
+
+data Step = Step {
+    step    :: Int
+  , howMany :: Int
+  , won     :: Int
+} deriving (Show, Read)
+
+data BestSeries = BestSeries Int deriving (Show, Read, Eq)
+data WorstSeries = WorstSeries Int deriving (Show, Read, Eq)

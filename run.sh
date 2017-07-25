@@ -2,8 +2,8 @@
 
 cd /home/greg/haskell/snooker-statistics/ 
 echo "Start at $(date)" >> logs/run.log
-
-java -jar selenium-server-standalone-2.47.1.jar -Dwebdriver.chrome.bin=/usr/bin/google-chrome -DwebDriver.chrome.driver=./chromedriver &
+gnome-terminal --command ' java -jar selenium-server-standalone-2.47.1.jar -Dwebdriver.chrome.bin=/usr/bin/google-chrome -Dwebdriver.chrome.driver=./chromedriver'
+#java -jar selenium-server-standalone-3.1.0.jar 
 
 sleep 5
 
